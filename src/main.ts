@@ -6,7 +6,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { setLineResolution } from "./neon";
 import { NeonWorld } from "./world";
-import { Game, LEVELS, HALF_H, type LevelDef } from "./game";
+import { Game, LEVELS, HALF_H, UPGRADES, type LevelDef } from "./game";
 import { Music } from "./music";
 import { initAudio, ctx, setRoom, sfx, musicBus } from "./audio";
 import { Input } from "./util";
@@ -24,7 +24,8 @@ const camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 10, 8000);
 camera.position.set(0, 0, HALF_H / Math.tan(THREE.MathUtils.degToRad(FOV / 2)));
 camera.lookAt(0, 0, 0);
 const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1280, 720), 0.85, 0.32, 0.45);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -81,7 +82,8 @@ function renderMenu() {
     if (l.group !== group) { group = l.group; const g = document.createElement("div"); g.className = "group"; g.textContent = group; listEl.appendChild(g); }
     const d = document.createElement("div");
     d.className = "item" + (i === menuIndex ? " sel" : "");
-    d.textContent = l.name.toUpperCase();
+    const b = best(l.id, skill);
+    d.innerHTML = `${l.name.toUpperCase()}<span style="float:right; color:#7ab; margin-left:30px">${b > 0 ? "BEST " + pts(b) : ""}</span>`;
     d.onclick = () => { menuIndex = i; startLevel(); };
     d.onmouseenter = () => { if (menuIndex !== i) { menuIndex = i; renderMenu(); previewTheme(); } };
     listEl.appendChild(d);
@@ -93,6 +95,12 @@ function renderMenu() {
   $("skilldesc").textContent = desc[skill];
 }
 
+// Best score per level and difficulty (the run is the same for everyone, so these compare).
+const bestKey = (id: string, s: number) => `neon.bestscore.${id}.${s}`;
+const pts = (n: number) => Math.floor(n).toLocaleString("en-US");
+const best = (id: string, s: number) => Number(localStorage.getItem(bestKey(id, s)) ?? 0);
+const fmt = (m: number) => Math.floor(m).toLocaleString("en-US") + " m";
+
 let previewId = "";
 function previewTheme() {
   const l = LEVELS[menuIndex];
@@ -103,7 +111,8 @@ function openMenu() {
   inMenu = true;
   if (game) { scene.remove(game.root); game.dispose(); game = null; }
   menuEl.style.display = "flex";
-  for (const id of ["score", "lives", "hull", "weapons", "level"]) $(id).style.visibility = "hidden";
+  for (const id of ["score", "lives", "hull", "weapons", "level", "dist", "bossbar"]) $(id).style.visibility = "hidden";
+  for (const el of offerLabels) el.style.display = "none";
   renderMenu();
   previewId = "";
   previewTheme();
@@ -119,7 +128,8 @@ function startLevel() {
   sfx("menuSelect");
   inMenu = false;
   menuEl.style.display = "none";
-  for (const id of ["score", "lives", "hull", "weapons", "level"]) $(id).style.visibility = "visible";
+  for (const id of ["score", "lives", "hull", "weapons", "level", "dist"]) $(id).style.visibility = "visible";
+  saved = false;
   previewId = "";
   setWorld(l);
   if (game) { scene.remove(game.root); game.dispose(); }
@@ -131,14 +141,44 @@ function startLevel() {
 
 // --- HUD ---
 let shownMsg = "";
+let saved = false;
+const offerLabels = [0, 1, 2].map(() => { const d = document.createElement("div"); d.className = "hud offer"; frame.appendChild(d); return d; });
+const v = new THREE.Vector3();
 function updateHud() {
   if (!game) return;
-  $("score").textContent = "SCORE " + String(game.score).padStart(7, "0");
+  $("score").textContent = "SCORE " + pts(game.score);
   $("lives").textContent = game.level.gentle?.endless ? "LIVES  ∞" : "LIVES  " + "▲ ".repeat(Math.max(0, game.lives));
   ($("hullfill") as HTMLElement).style.width = `${Math.max(0, game.hull)}%`;
   ($("hullfill") as HTMLElement).style.background = game.hull > 35 ? "#5df" : "#f54";
-  $("weapons").textContent = `PULSE LV ${game.weapon}` + (game.shieldHits > 0 ? `   SHIELD x${game.shieldHits}` : "");
-  $("level").textContent = `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   ${Math.round(game.progress * 100)}%   (ESC menu, M music)`;
+  $("weapons").textContent = `GUNS ${game.weapon}   FIRE x${game.fireRate.toFixed(2)}   DMG x${game.damage.toFixed(2)}` + (game.shieldHits > 0 ? `   SHIELD x${game.shieldHits}` : "");
+  // The run: score (the result), the next bonus, the record; the bar shows the way to the finish line.
+  const b = best(game.level.id, skill);
+  const mins = Math.floor(game.runTime / 60), secs = Math.floor(game.runTime % 60);
+  $("disttext").textContent = `NEXT BONUS ${pts(game.nextBonus)}     DANGER ${game.minute + 1}     ${mins}:${String(secs).padStart(2, "0")}     ${fmt(game.dist)} / ${fmt(game.level.finish)}` + (b > 0 ? `     BEST ${pts(b)}` : "");
+  ($("distfill") as HTMLElement).style.width = `${game.progress * 100}%`;
+  ($("distbest") as HTMLElement).style.display = "none";
+  // Mini-boss health.
+  $("bossbar").style.visibility = game.boss ? "visible" : "hidden";
+  if (game.boss) { $("bossname").textContent = game.boss.name; ($("bossfill") as HTMLElement).style.width = `${game.bossHealth * 100}%`; }
+  // Upgrade labels under their pods.
+  offerLabels.forEach((el, i) => {
+    const p = game!.pods[i];
+    if (!p || game!.tunnel) { el.style.display = "none"; return; }
+    v.set(p.x, p.y - 62, 0).project(camera);
+    el.style.display = "block";
+    el.style.left = `${(v.x * 0.5 + 0.5) * 100}%`;
+    el.style.top = `${(-v.y * 0.5 + 0.5) * 100}%`;
+    el.textContent = UPGRADES[p.kind].name;
+    el.style.color = "#" + UPGRADES[p.kind].color.toString(16).padStart(6, "0");
+  });
+  // Save the record when the run ends.
+  if ((game.done || game.over) && !saved) {
+    saved = true;
+    if (game.score > b) { localStorage.setItem(bestKey(game.level.id, skill), String(game.score)); game.message += "   NEW BEST!"; game.messageT = 7; }
+  }
+  $("level").textContent = game.tunnel
+    ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer, SPACE boost, SHIFT brake)`
+    : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (ESC menu, M music, H hit boxes)`;
   const msg = game.messageT > 0 ? game.message : "";
   if (msg !== shownMsg) { shownMsg = msg; $("msg").textContent = msg; }
   ($("msg") as HTMLElement).style.opacity = game.messageT > 0 ? "1" : "0";
@@ -165,18 +205,27 @@ function frameLoop(now: number) {
     world?.update(dt, 120);
   } else if (game) {
     if (input.hit("Escape")) { openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("KeyH")) game.showHits = !game.showHits;
     game.update(dt, input);
-    world?.update(dt, game.level.scroll);
+    if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
     if (music) {
-      music.energy = game.over ? 0.25 : game.bigFight ? 0.95 : 0.55 + 0.25 * Math.min(game.difficulty, 1);
-      music.tempoBoost = game.bigFight ? 0.1 : 0;
+      music.energy = game.over ? 0.25 : game.tunnel ? 1 : game.bigFight ? 0.95 : 0.55 + 0.25 * Math.min(game.difficulty, 1);
+      music.tempoBoost = game.bigFight ? 0.1 : game.tunnel ? 0.06 : 0;
     }
     updateHud();
-    if (game.done || game.over) { endTimer += dt; if (endTimer > 4.5) openMenu(); }
+    if (game.done || game.over) { endTimer += dt; if (endTimer > 7) openMenu(); }
   }
-  composer.render();
+  render();
   input.endFrame();
   requestAnimationFrame(frameLoop);
+}
+
+/** Draws the play field, or the tunnel when diving; a white flash on the way in and out. */
+function render() {
+  if (game?.tunnel) { renderPass.scene = game.tunnel.scene; renderPass.camera = game.tunnel.camera; }
+  else { renderPass.scene = scene; renderPass.camera = camera; }
+  ($("flash") as HTMLElement).style.opacity = String(game ? game.flash * 0.8 : 0);
+  composer.render();
 }
 
 /** For tests: run the game for some seconds at 60 steps a second, steering left and right and firing, then draw once. */
@@ -184,13 +233,13 @@ function simulate(seconds: number) {
   if (!game) return;
   const steps = Math.round(seconds * 60);
   for (let i = 0; i < steps; i++) {
-    const t = game.time;
+    const t = game.runTime;
     const fake = { move: () => ({ x: Math.sin(t * 1.3), y: game!.debugShipY() > -280 ? -1 : 0 }), fire: () => true, down: () => false, hit: () => false, endFrame: () => {} } as unknown as Input;
     game.update(1 / 60, fake);
-    world?.update(1 / 60, game.level.scroll);
+    if (!game.tunnel) world?.update(1 / 60, game.level.speed * 10);
   }
   updateHud();
-  composer.render();
+  render();
 }
 
 // Audio needs a gesture first: the first key press or click starts it (and the menu music).

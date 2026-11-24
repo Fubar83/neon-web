@@ -15,17 +15,23 @@ npm run build      # static files in dist/ (host anywhere)
 ## Play
 
 - Level select: Up/Down choose, Left/Right difficulty (Easy / Normal / Hard), Enter start.
-- In a level: WASD or arrows move, J or Z fire, Space boost, Shift brake, M music on/off, Esc back to the menu.
+- In a level: WASD or arrows move, J or Z fire, Space boost, Shift brake, M music on/off, H hit circles, Esc back to the menu.
 - A gamepad works too (left stick, right trigger / A to fire).
 
-## What is in it so far
+## How a run works
 
-- Levels: Sunny Synth (for kids), Clockwork Foundry, Circuit Board, Synthwave Sunset; about two minutes each.
-- Themes: Clockwork (tracks, meshing cogs, gauges), Circuit (traces, chips, vias), Synthwave (grid, striped suns, mountains, palms).
-- Enemies: drone, fighter, burster, splitter (bursts into fragments), blinker (teleports), rock, and a big cog that fires rings.
-- Power-ups (weapon up, repair, shield), explosions with sparks and rings, enemies grey out when shot down.
-- Music: the same styles, scales, chord progressions, melody rules and sections as the Unreal synth; intensity and tempo rise in big fights.
-- Sound effects panned by where they happen, with a per-theme room reverb.
+- Each level is a run of about ten minutes to a finish line. Your result is your **score**; your best score per level and difficulty is saved and shown in the menu.
+- **The run is the same for everyone**: waves, upgrade offers, tunnels and mini-bosses all come from the level's seed and the distance flown, never from luck or from what you did. (Different difficulties are different runs.)
+- **Harder every minute** (a minute's worth of distance): more waves, tougher and faster-shooting enemies, bigger groups, two groups at once later on, and a new enemy kind each minute.
+- **Points**: simple enemies are worth little, tough ones more (and everything more each danger level). Destroy every enemy of a wave (splitter fragments too) for a WAVE CLEARED bonus of half its value; let one escape and it is gone. Mini-boss parts, cleared tunnels and the finish line (plus 5,000 per life left) score too.
+- **Bonuses**: every 4,000 points three different upgrades appear mid-screen for about seven seconds; fly into one and the others are gone (+1 gun, faster fire, +25% damage, shield, repair, +1 life). So they are earned by fighting, not by flying past enemies.
+- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step.
+- **Mini-bosses** (Fortress, Dreadnought) must be taken apart in order: turrets or engines first, then generators or turrets, then the core. Parts not yet up are shielded.
+
+## Levels
+
+- Sunny Synth (for kids): gentler, endless lives, 10,000 m.
+- Clockwork Foundry, Circuit Board, Synthwave Sunset: 16,000 m each.
 
 ## Code
 
