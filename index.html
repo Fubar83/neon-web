@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NEON</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; color: #cfe; }
+      #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      #frame { position: relative; }
+      canvas { display: block; }
+      .hud { position: absolute; pointer-events: none; font-size: 14px; letter-spacing: 0.06em; text-shadow: 0 0 6px rgba(0,255,255,0.5); }
+      #score { left: 16px; top: 12px; }
+      #lives { left: 16px; top: 34px; color: #7ff; }
+      #hull { right: 16px; top: 12px; width: 200px; }
+      #hullbar { height: 8px; background: #123; margin-top: 4px; }
+      #hullfill { height: 100%; width: 100%; background: #5df; box-shadow: 0 0 8px #5df; }
+      #weapons { right: 16px; top: 44px; text-align: right; font-size: 12px; color: #fd7; }
+      #level { left: 16px; bottom: 12px; font-size: 12px; color: #9fb; }
+      #msg { left: 0; right: 0; top: 30%; text-align: center; font-size: 28px; font-weight: 600; color: #ffd860; opacity: 0; transition: opacity 0.3s; text-shadow: 0 0 14px rgba(255,200,60,0.7); }
+      #menu { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); }
+      #menu h1 { font-size: 64px; letter-spacing: 0.5em; margin: 0 0 6px 0.5em; color: #ff4fd0; text-shadow: 0 0 20px #f0c; font-weight: 300; }
+      #menu .sub { color: #5ef; letter-spacing: 0.2em; margin-bottom: 18px; }
+      #list { min-width: 420px; background: rgba(5,5,15,0.85); border-top: 2px solid #3aa; border-bottom: 2px solid #3aa; padding: 8px 0; }
+      .item { padding: 6px 24px; color: #9ab; cursor: pointer; letter-spacing: 0.08em; }
+      .item.sel { background: rgba(30,150,200,0.35); color: #fff; box-shadow: inset 4px 0 #5ef; }
+      .group { padding: 8px 18px 2px; color: #f6c; font-size: 12px; letter-spacing: 0.15em; }
+      #skill { margin-top: 14px; font-size: 22px; color: #ffd860; }
+      #skilldesc { color: #8ab; font-size: 13px; margin-top: 4px; }
+      #help { margin-top: 18px; color: #789; font-size: 12px; letter-spacing: 0.05em; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><div id="frame">
+      <div id="score" class="hud">SCORE 0000000</div>
+      <div id="lives" class="hud"></div>
+      <div id="hull" class="hud">HULL<div id="hullbar"><div id="hullfill"></div></div></div>
+      <div id="weapons" class="hud"></div>
+      <div id="level" class="hud"></div>
+      <div id="msg" class="hud"></div>
+      <div id="menu">
+        <h1>NEON</h1>
+        <div class="sub">SELECT A LEVEL</div>
+        <div id="list"></div>
+        <div id="skill"></div>
+        <div id="skilldesc"></div>
+        <div id="help">UP / DOWN choose &nbsp; LEFT / RIGHT difficulty &nbsp; ENTER start &nbsp;&nbsp; in game: WASD / arrows move, J or Z fire, SPACE boost, SHIFT brake, M music, ESC menu</div>
+      </div>
+    </div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
