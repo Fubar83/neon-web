@@ -6,10 +6,15 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { setLineResolution } from "./neon";
 import { NeonWorld } from "./world";
-import { Game, LEVELS, HALF_H, UPGRADES, type LevelDef } from "./game";
+import { Game, LEVELS, HALF_H, UPGRADES, WEAPONS, type LevelDef } from "./game";
+import { ADDONS, loadLoadout, saveLoadout, type Loadout } from "./loadout";
+import { Panel } from "./panel";
+import { hangarRows } from "./hangar";
+import { shopRows } from "./shop";
 import { Music } from "./music";
 import { initAudio, ctx, setRoom, sfx, musicBus } from "./audio";
 import { Input } from "./util";
+import { GALLERY, GALLERY_LEVEL, GALLERY_NOTE } from "./gallery";
 
 // --- Renderer: a fixed 16:9 frame, letterboxed, looking straight down at the play field ---
 const frame = document.getElementById("frame")!;
@@ -52,10 +57,34 @@ let musicMuted = localStorage.getItem("neon.muted") === "1";
 let skill = Number(localStorage.getItem("neon.skill") ?? 1);
 let menuIndex = Number(localStorage.getItem("neon.menu") ?? 1);
 let inMenu = true;
+let inGallery = false;
+let inHangar = false;
+let paused = false;
+let galleryIndex = 0;
 let endTimer = 0;
 
 const $ = (id: string) => document.getElementById(id)!;
 const menuEl = $("menu"), listEl = $("list");
+// --- The set-up (hangar, before a run: hull, colour) and the shop (a run's pause: coins buy weapons,
+// add-ons and their upgrades for that run) share one side panel ---
+let loadout = loadLoadout();
+function setLoadout(l: Loadout) {
+  loadout = l;
+  saveLoadout(l);
+  if (game && inHangar) game.applyLoadout(l, false);
+}
+const hangar = new Panel($("hangar"), () => ({
+  title: "HANGAR", right: "",
+  rows: hangarRows(loadout, setLoadout),
+  note: "Weapons, add-ons and their upgrades are bought during a run in the shop (P), with coins from destroyed enemies; they last for that run.",
+  help: "ARROWS move &nbsp; ENTER / SPACE pick &nbsp; ESC back",
+}));
+const shop = new Panel($("hangar"), () => ({
+  title: "PAUSED - SHOP", right: "COINS " + (game?.coins ?? 0).toLocaleString("en-US"),
+  rows: game ? shopRows(game) : [],
+  note: "Bought for this run only. Coins drop from destroyed enemies; fly close to collect them.",
+  help: "ARROWS move &nbsp; ENTER / SPACE buy or switch &nbsp; P resume &nbsp; ESC menu",
+}));
 const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
 
 function setWorld(level: LevelDef) {
@@ -88,6 +117,17 @@ function renderMenu() {
     d.onmouseenter = () => { if (menuIndex !== i) { menuIndex = i; renderMenu(); previewTheme(); } };
     listEl.appendChild(d);
   });
+  // Extras: the hangar (loadout) and the gallery of enemies and the ship.
+  const g = document.createElement("div"); g.className = "group"; g.textContent = "EXTRAS"; listEl.appendChild(g);
+  ["HANGAR: SHIP SET-UP", "GALLERY: ENEMIES & SHIP"].forEach((name, k) => {
+    const idx = LEVELS.length + k;
+    const d = document.createElement("div");
+    d.className = "item" + (menuIndex === idx ? " sel" : "");
+    d.textContent = name;
+    d.onclick = () => { menuIndex = idx; startLevel(); };
+    d.onmouseenter = () => { if (menuIndex !== idx) { menuIndex = idx; renderMenu(); } };
+    listEl.appendChild(d);
+  });
   const names = ["EASY", "NORMAL", "HARD"], colors = ["#5f8", "#ffd860", "#f54"];
   const desc = ["5 lives - less damage - calmer waves", "3 lives - the intended challenge", "2 lives - more damage - faster, tougher waves"];
   $("skill").innerHTML = `&lt;&nbsp;&nbsp; ${names[skill]} &nbsp;&nbsp;&gt;`;
@@ -104,15 +144,20 @@ const fmt = (m: number) => Math.floor(m).toLocaleString("en-US") + " m";
 let previewId = "";
 function previewTheme() {
   const l = LEVELS[menuIndex];
-  if (l.theme + l.seed !== previewId) { previewId = l.theme + l.seed; setWorld(l); }
+  if (l && l.theme + l.seed !== previewId) { previewId = l.theme + l.seed; setWorld(l); }
 }
 
 function openMenu() {
   inMenu = true;
+  inGallery = false;
+  inHangar = false;
+  paused = false;
+  $("gallery").style.display = "none";
+  $("hangar").style.display = "none";
+  $("msg").style.right = "0";
   if (game) { scene.remove(game.root); game.dispose(); game = null; }
   menuEl.style.display = "flex";
-  for (const id of ["score", "lives", "hull", "weapons", "level", "dist", "bossbar"]) $(id).style.visibility = "hidden";
-  for (const el of offerLabels) el.style.display = "none";
+  for (const id of ["score", "lives", "coins", "hull", "weapons", "cdbar", "upgrades", "level", "dist", "bossbar"]) $(id).style.visibility = "hidden";
   renderMenu();
   previewId = "";
   previewTheme();
@@ -121,64 +166,154 @@ function openMenu() {
 }
 
 function startLevel() {
+  if (menuIndex === LEVELS.length) { openHangar(); return; }
+  if (menuIndex > LEVELS.length) { openGallery(); return; }
   initAudio();
   ctx?.resume();
   const l = LEVELS[menuIndex];
   localStorage.setItem("neon.menu", String(menuIndex));
   sfx("menuSelect");
   inMenu = false;
+  inGallery = false;
+  inHangar = false;
+  paused = false;
+  $("gallery").style.display = "none";
+  $("hangar").style.display = "none";
+  $("msg").style.right = "0";
   menuEl.style.display = "none";
-  for (const id of ["score", "lives", "hull", "weapons", "level", "dist"]) $(id).style.visibility = "visible";
+  for (const id of ["score", "lives", "coins", "hull", "weapons", "cdbar", "upgrades", "level", "dist"]) $(id).style.visibility = "visible";
   saved = false;
   previewId = "";
   setWorld(l);
   if (game) { scene.remove(game.root); game.dispose(); }
-  game = new Game(l, skill);
+  loadout = loadLoadout();
+  game = new Game(l, skill, loadout);
   scene.add(game.root);
   playMusic(l.music, l.seed);
   endTimer = 0;
 }
 
+// --- Hangar: the loadout panel on the right, the ship flying it on the left ---
+function openHangar() {
+  initAudio();
+  ctx?.resume();
+  sfx("menuSelect");
+  inMenu = false;
+  inHangar = true;
+  menuEl.style.display = "none";
+  for (const id of ["score", "lives", "coins", "hull", "weapons", "cdbar", "upgrades", "level", "dist", "bossbar"]) $(id).style.visibility = "hidden";
+  $("msg").style.right = "38%";
+  previewId = "";
+  setWorld(GALLERY_LEVEL);
+  if (game) { scene.remove(game.root); game.dispose(); }
+  loadout = loadLoadout();
+  game = new Game(GALLERY_LEVEL, 1, loadout);
+  game.setDemo("hangar");
+  game.applyLoadout(loadout, false);
+  scene.add(game.root);
+  $("hangar").style.display = "block";
+  hangar.reset();
+  hangar.render();
+}
+
+/** Pause a run: the shop comes up. */
+function setPaused(on: boolean) {
+  paused = on;
+  $("hangar").style.display = on ? "block" : "none";
+  if (on) shop.render();
+  sfx("menuMove");
+}
+
+/** Arrow keys and Enter / Space in the side panel (hangar or shop). */
+function hangarKeys() {
+  const p = inHangar ? hangar : shop;
+  if (input.hit("ArrowUp", "KeyW")) p.move(-1, 0);
+  if (input.hit("ArrowDown", "KeyS")) p.move(1, 0);
+  if (input.hit("ArrowLeft", "KeyA")) p.move(0, -1);
+  if (input.hit("ArrowRight", "KeyD")) p.move(0, 1);
+  if (input.hit("Enter", "NumpadEnter", "Space")) { if (p.pick()) sfx("menuMove"); else sfx("hurt", 0, 0.3); }
+}
+
+// --- Gallery: one entry at a time, shown live on the left, described in the panel on the right ---
+function openGallery() {
+  initAudio();
+  ctx?.resume();
+  sfx("menuSelect");
+  inMenu = false;
+  inGallery = true;
+  menuEl.style.display = "none";
+  $("gallery").style.display = "block";
+  for (const id of ["score", "lives", "coins", "hull", "weapons", "cdbar", "upgrades", "level", "dist", "bossbar"]) $(id).style.visibility = "hidden";
+  $("msg").style.right = "31%";
+  previewId = "";
+  setWorld(GALLERY_LEVEL);
+  if (game) { scene.remove(game.root); game.dispose(); }
+  game = new Game(GALLERY_LEVEL, 1);
+  scene.add(game.root);
+  showEntry(galleryIndex);
+}
+
+function showEntry(i: number) {
+  galleryIndex = (i + GALLERY.length) % GALLERY.length;
+  const e = GALLERY[galleryIndex];
+  game?.setDemo(e.kind);
+  const tabs = $("gtabs");
+  tabs.innerHTML = "";
+  GALLERY.forEach((t, j) => {
+    const c = document.createElement("span");
+    c.className = "gtab" + (j === galleryIndex ? " sel" : "");
+    c.textContent = t.name.replace("Mini-Boss: ", "");
+    c.style.color = t.color;
+    c.onclick = () => { sfx("menuMove"); showEntry(j); };
+    tabs.appendChild(c);
+  });
+  $("gname").textContent = e.name.toUpperCase();
+  ($("gname") as HTMLElement).style.color = e.color;
+  ($("gname") as HTMLElement).style.textShadow = `0 0 12px ${e.color}`;
+  $("gcount").textContent = `${galleryIndex + 1} / ${GALLERY.length}`;
+  $("gstats").innerHTML = e.stats.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("");
+  $("gabil").innerHTML = e.abilities.map((a) => `<li>${a}</li>`).join("");
+  $("gnote").textContent = ["ship", "weapons", "fortress", "dreadnought"].includes(e.kind) ? "" : GALLERY_NOTE;
+}
+
 // --- HUD ---
 let shownMsg = "";
 let saved = false;
-const offerLabels = [0, 1, 2].map(() => { const d = document.createElement("div"); d.className = "hud offer"; frame.appendChild(d); return d; });
-const v = new THREE.Vector3();
 function updateHud() {
   if (!game) return;
   $("score").textContent = "SCORE " + pts(game.score);
   $("lives").textContent = game.level.gentle?.endless ? "LIVES  ∞" : "LIVES  " + "▲ ".repeat(Math.max(0, game.lives));
-  ($("hullfill") as HTMLElement).style.width = `${Math.max(0, game.hull)}%`;
-  ($("hullfill") as HTMLElement).style.background = game.hull > 35 ? "#5df" : "#f54";
-  $("weapons").textContent = `GUNS ${game.weapon}   FIRE x${game.fireRate.toFixed(2)}   DMG x${game.damage.toFixed(2)}` + (game.shieldHits > 0 ? `   SHIELD x${game.shieldHits}` : "");
+  const hp = game.hull / game.maxHull;
+  ($("hullfill") as HTMLElement).style.width = `${Math.max(0, hp) * 100}%`;
+  ($("hullfill") as HTMLElement).style.background = hp > 0.35 ? "#5df" : "#f54";
+  $("coins").textContent = `COINS ${pts(game.coins)}   (P SHOP)`;
+  const sec = game.secondary;
+  const cd = game.secCool > 0 ? game.secCool.toFixed(1) + "s" : "READY";
+  const adds = game.addons.map((a) => ADDONS[a].name).join(" + ");
+  $("weapons").textContent = `${game.primaries.map((p) => WEAPONS[p].name).join(" + ")} LV ${game.weapon}   |   ` + (sec ? `${WEAPONS[sec].name} ${cd}` : "NO SECONDARY") + (adds ? `   |   ${adds}` : "");
+  $("cdbar").style.visibility = sec ? "visible" : "hidden";
+  if (sec) {
+    ($("cdfill") as HTMLElement).style.width = `${Math.max(0, 1 - game.secCool / game.cooldown(sec)) * 100}%`;
+    ($("cdfill") as HTMLElement).style.background = game.secCool > 0 ? "#a85" : "#ffd860";
+  }
+  $("upgrades").textContent = `FIRE x${game.fireRate.toFixed(2)}   DMG x${game.damage.toFixed(2)}` + (game.shieldHits > 0 ? `   SHIELD x${game.shieldHits}` : "");
   // The run: score (the result), the next bonus, the record; the bar shows the way to the finish line.
   const b = best(game.level.id, skill);
   const mins = Math.floor(game.runTime / 60), secs = Math.floor(game.runTime % 60);
-  $("disttext").textContent = `NEXT BONUS ${pts(game.nextBonus)}     DANGER ${game.minute + 1}     ${mins}:${String(secs).padStart(2, "0")}     ${fmt(game.dist)} / ${fmt(game.level.finish)}` + (b > 0 ? `     BEST ${pts(b)}` : "");
+  $("disttext").textContent = `NEXT BONUS ${pts(game.nextBonus)}: ${UPGRADES[game.nextUpgrade].name}     DANGER ${game.minute + 1}     ${mins}:${String(secs).padStart(2, "0")}     ${fmt(game.dist)} / ${fmt(game.level.finish)}` + (b > 0 ? `     BEST ${pts(b)}` : "");
   ($("distfill") as HTMLElement).style.width = `${game.progress * 100}%`;
   ($("distbest") as HTMLElement).style.display = "none";
   // Mini-boss health.
   $("bossbar").style.visibility = game.boss ? "visible" : "hidden";
   if (game.boss) { $("bossname").textContent = game.boss.name; ($("bossfill") as HTMLElement).style.width = `${game.bossHealth * 100}%`; }
-  // Upgrade labels under their pods.
-  offerLabels.forEach((el, i) => {
-    const p = game!.pods[i];
-    if (!p || game!.tunnel) { el.style.display = "none"; return; }
-    v.set(p.x, p.y - 62, 0).project(camera);
-    el.style.display = "block";
-    el.style.left = `${(v.x * 0.5 + 0.5) * 100}%`;
-    el.style.top = `${(-v.y * 0.5 + 0.5) * 100}%`;
-    el.textContent = UPGRADES[p.kind].name;
-    el.style.color = "#" + UPGRADES[p.kind].color.toString(16).padStart(6, "0");
-  });
   // Save the record when the run ends.
   if ((game.done || game.over) && !saved) {
     saved = true;
     if (game.score > b) { localStorage.setItem(bestKey(game.level.id, skill), String(game.score)); game.message += "   NEW BEST!"; game.messageT = 7; }
   }
   $("level").textContent = game.tunnel
-    ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer, SPACE boost, SHIFT brake)`
-    : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (ESC menu, M music, H hit boxes)`;
+    ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer, SHIFT brake)`
+    : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (auto-fire, SPACE secondary, SHIFT precise, P shop, ESC menu, M music, H hit boxes)`;
   const msg = game.messageT > 0 ? game.message : "";
   if (msg !== shownMsg) { shownMsg = msg; $("msg").textContent = msg; }
   ($("msg") as HTMLElement).style.opacity = game.messageT > 0 ? "1" : "0";
@@ -195,8 +330,22 @@ function frameLoop(now: number) {
     localStorage.setItem("neon.muted", musicMuted ? "1" : "0");
     if (ctx) musicBus.gain.value = musicMuted ? 0 : 0.5;
   }
-  if (inMenu) {
-    const n = LEVELS.length;
+  if (inHangar && game) {
+    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    hangarKeys();
+    game.update(dt, input);
+    world?.update(dt, 120);
+    updateGalleryMsg();
+  } else if (inGallery && game) {
+    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("ArrowRight", "KeyD", "ArrowDown", "KeyS")) { sfx("menuMove"); showEntry(galleryIndex + 1); }
+    if (input.hit("ArrowLeft", "KeyA", "ArrowUp", "KeyW")) { sfx("menuMove"); showEntry(galleryIndex - 1); }
+    if (input.hit("KeyH")) game.showHits = !game.showHits;
+    game.update(dt, input);
+    world?.update(dt, 120);
+    updateGalleryMsg();
+  } else if (inMenu) {
+    const n = LEVELS.length + 2;
     if (input.hit("ArrowUp", "KeyW")) { menuIndex = (menuIndex + n - 1) % n; sfx("menuMove"); renderMenu(); previewTheme(); }
     if (input.hit("ArrowDown", "KeyS")) { menuIndex = (menuIndex + 1) % n; sfx("menuMove"); renderMenu(); previewTheme(); }
     if (input.hit("ArrowLeft", "KeyA")) { skill = Math.max(0, skill - 1); localStorage.setItem("neon.skill", String(skill)); sfx("menuMove"); renderMenu(); }
@@ -205,6 +354,8 @@ function frameLoop(now: number) {
     world?.update(dt, 120);
   } else if (game) {
     if (input.hit("Escape")) { openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("KeyP", "Tab") && !game.tunnel && !game.done && !game.over) setPaused(!paused);
+    if (paused) { hangarKeys(); updateHud(); render(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
     game.update(dt, input);
     if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
@@ -218,6 +369,12 @@ function frameLoop(now: number) {
   render();
   input.endFrame();
   requestAnimationFrame(frameLoop);
+}
+
+function updateGalleryMsg() {
+  const msg = game && game.messageT > 0 ? game.message : "";
+  if (msg !== shownMsg) { shownMsg = msg; $("msg").textContent = msg; }
+  ($("msg") as HTMLElement).style.opacity = msg ? "1" : "0";
 }
 
 /** Draws the play field, or the tunnel when diving; a white flash on the way in and out. */
@@ -234,7 +391,7 @@ function simulate(seconds: number) {
   const steps = Math.round(seconds * 60);
   for (let i = 0; i < steps; i++) {
     const t = game.runTime;
-    const fake = { move: () => ({ x: Math.sin(t * 1.3), y: game!.debugShipY() > -280 ? -1 : 0 }), fire: () => true, down: () => false, hit: () => false, endFrame: () => {} } as unknown as Input;
+    const fake = { move: () => ({ x: Math.sin(t * 1.3), y: game!.debugShipY() > -280 ? -1 : 0 }), fire: () => true, fire2: () => true, down: () => false, hit: () => false, endFrame: () => {} } as unknown as Input;
     game.update(1 / 60, fake);
     if (!game.tunnel) world?.update(1 / 60, game.level.speed * 10);
   }
@@ -257,4 +414,17 @@ openMenu();
 requestAnimationFrame(frameLoop);
 
 // For automated checks: window.neon exposes a little state.
-(window as unknown as { neon: unknown }).neon = { get game() { return game; }, get inMenu() { return inMenu; }, startLevel: (i: number) => { menuIndex = i; startLevel(); }, simulate };
+(window as unknown as { neon: unknown }).neon = {
+  get game() { return game; }, get inMenu() { return inMenu; }, startLevel: (i: number) => { menuIndex = i; startLevel(); }, simulate,
+  gallery: (i: number) => { galleryIndex = i; openGallery(); },
+  hangar: () => { menuIndex = LEVELS.length; startLevel(); },
+  get loadout() { return loadout; },
+  shop: () => shop, hangarPanel: () => hangar,
+  get paused() { return paused; },
+  /** For tests: what P does in a run. */
+  togglePause: () => { if (game && !inMenu && !inGallery && !inHangar) setPaused(!paused); },
+  /** For tests: one frame with the real keyboard input. */
+  step: () => { game?.update(1 / 60, input); input.endFrame(); if (!inGallery) updateHud(); },
+  /** For tests: run the gallery demo for some seconds, then draw once. */
+  galleryRun: (seconds: number) => { for (let i = 0; i < Math.round(seconds * 60); i++) game?.update(1 / 60, input); updateGalleryMsg(); render(); },
+};

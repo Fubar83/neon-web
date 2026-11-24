@@ -199,7 +199,7 @@ export class TunnelRun {
     this.time += dt;
     this.message = "";
     const base = Math.min(12500, 5000 + this.time * 380);
-    this.speed = base * (input.down("Space") ? 1.3 : 1) * (input.down("ShiftLeft", "ShiftRight") ? 0.7 : 1);
+    this.speed = base * (input.down("ShiftLeft", "ShiftRight") ? 0.7 : 1);
     const prev = this.s;
     this.s += this.speed * dt;
     // Steering: the ship slides around the tube (the view rolls so it stays at the bottom).

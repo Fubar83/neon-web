@@ -2,7 +2,8 @@
 // the distance flown (never by luck), so every player gets the same run and can compete on score. It
 // gets harder every "minute" of distance: more waves, tougher enemies, new kinds. Points: simple enemies
 // little, tough ones more, more again each danger level, a bonus for destroying a whole wave. Every
-// 4,000 points three upgrades appear mid-screen: fly into one, the others go. Tunnels are mandatory.
+// 4,000 points the next upgrade in a fixed order. Tunnels are mandatory. Destroyed enemies drop coins,
+// spent in the shop (pause) on weapons, add-ons and upgrades for this run; every run starts equal.
 import * as THREE from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -12,6 +13,7 @@ import { Input, Rng, clamp } from "./util";
 import type { Theme } from "./world";
 import type { MusicStyle } from "./music";
 import { TunnelRun } from "./tunnel";
+import { DEFAULT_LOADOUT, DUAL_FACTOR, HULLS, type AddonKind, type HullKind, type Loadout } from "./loadout";
 
 export const HALF_W = 800, HALF_H = 450;
 
@@ -33,6 +35,25 @@ export interface LevelDef {
 }
 
 export type BossKind = "fortress" | "dreadnought";
+/** What the gallery can show: the player's ship, an enemy kind or a mini-boss. */
+export type DemoKind = "ship" | "weapons" | "hangar" | EnemyKind | BossKind;
+/** The gallery shows everything left of centre, clear of its info panel. */
+const DEMO_X = -260;
+/** A step of the ship and weapon demos: what it shows, for how long, and how. */
+interface DemoStep { msg: string; t: number; lvl: number; gun?: PrimaryKind; sec?: SecondaryKind; missiles?: boolean; rate?: number; slow?: boolean; shield?: boolean; hits?: boolean; hold?: boolean; targets?: boolean }
+const SHIP_DEMO: DemoStep[] = [
+  { msg: "1 GUN", t: 2.5, lvl: 1 }, { msg: "2 GUNS", t: 2.5, lvl: 2 }, { msg: "3 GUNS - SPREAD", t: 2.5, lvl: 3 }, { msg: "4 GUNS", t: 2.5, lvl: 4 }, { msg: "5 GUNS (MAX)", t: 2.5, lvl: 5 },
+  { msg: "FASTER FIRE  x2", t: 3, lvl: 5, rate: 2 }, { msg: "PRECISE (SHIFT)", t: 3.5, lvl: 5, rate: 2, slow: true },
+  { msg: "SHIELD x4 - TAKES 4 HITS", t: 6, lvl: 5, shield: true, hold: true }, { msg: "HIT CIRCLES (H)", t: 4.5, lvl: 5, hits: true, hold: true },
+];
+const WEAPON_DEMO: DemoStep[] = ([
+  { msg: "PRIMARY: PULSE GUN - FAST STRAIGHT SHOTS", gun: "pulse" },
+  { msg: "PRIMARY: LASER - A CONTINUOUS BEAM", gun: "laser" },
+  { msg: "PRIMARY: CHAIN LASER - JUMPS, -25% PER JUMP", gun: "chain" },
+  { msg: "SECONDARY: LAVA CANNON - BURST + BURNING POOL", sec: "lava" },
+  { msg: "SECONDARY: SHOCKWAVE - CLOSER TARGETS TAKE MORE", sec: "shock" },
+  { msg: "ADD-ON: HOMING MISSILES - FIRE BY THEMSELVES", missiles: true },
+] as Omit<DemoStep, "t" | "lvl">[]).map((s) => ({ t: 7, lvl: 3, targets: true, ...s }));
 /** Three mini-bosses between the tunnels: two of one kind, one of the other. */
 const BOSSES = (a: BossKind, b: BossKind) => [{ at: 4600, kind: a }, { at: 8200, kind: b }, { at: 14800, kind: a }];
 const TUNNELS = (simple: number[]) => [2800, 6400, 10000, 13600].map((at, i) => ({ at, length: 120000, simplicity: simple[i] }));
@@ -56,7 +77,9 @@ function hitMat(c: number) {
   return m;
 }
 
-interface Shot { x: number; y: number; vx: number; vy: number; r: number; color: THREE.Color; dmg: number; life: number }
+interface Shot { x: number; y: number; vx: number; vy: number; r: number; color: THREE.Color; dmg: number; life: number; kind?: "missile" | "lava"; target?: Target | null; done?: boolean;
+  /** Enemies it can still go through, and those it already hit; a missile's blast radius. */
+  pierce?: number; hitRefs?: Set<object>; blast?: number }
 interface Enemy {
   kind: EnemyKind; obj: THREE.Group; mats: LineMaterial[]; color: THREE.Color; rng: Rng;
   x: number; y: number; sx: number; sy: number; age: number; hp: number; maxHp: number; r: number; score: number;
@@ -72,21 +95,52 @@ interface Boss { kind: BossKind; name: string; x: number; y: number; sx: number;
 interface Spark { pos: THREE.Vector3; vel: THREE.Vector3; life: number; max: number; color: THREE.Color }
 interface Ring { obj: LineSegments2; mat: LineMaterial; life: number; max: number; scale: number }
 
+/** The ship's weapons, in three slots. The weapon level (1-5) powers all of them.
+ *  Primary (hold fire; Q / E or 1-4 to switch), secondary (its own key, then a cooldown; R or 5-8 to switch),
+ *  and the add-on: homing missiles that fire by themselves. */
+export type PrimaryKind = "pulse" | "laser" | "chain";
+export type SecondaryKind = "lava" | "shock";
+export type WeaponKind = PrimaryKind | SecondaryKind | "missile";
+export const PRIMARY_ORDER: PrimaryKind[] = ["pulse", "laser", "chain"];
+export const SECONDARY_ORDER: SecondaryKind[] = ["lava", "shock"];
+/** Seconds between secondary shots (shorter with faster fire). */
+export const COOLDOWN: Record<SecondaryKind, number> = { lava: 2.2, shock: 2.6 };
+/** Seconds between missile volleys (shorter with faster fire). */
+const MISSILE_EVERY = 1.4;
+export const WEAPONS: Record<WeaponKind, { name: string; color: number }> = {
+  pulse: { name: "PULSE GUN", color: 0x66ddff },
+  laser: { name: "LASER", color: 0xff3366 },
+  missile: { name: "HOMING MISSILES", color: 0xffaa33 },
+  lava: { name: "LAVA CANNON", color: 0xff5511 },
+  shock: { name: "SHOCKWAVE", color: 0x55ffdd },
+  chain: { name: "CHAIN LASER", color: 0xaa77ff },
+};
+/** Something the ship's weapons can hit: an enemy or a mini-boss part (shielded parts take no damage yet). */
+interface Target { ref: object; readonly x: number; readonly y: number; r: number; shielded: boolean; alive(): boolean; hit(dmg: number, quiet: boolean): void }
+interface Zap { obj: LineSegments2; life: number }
+/** A shockwave: a half ring growing from where it was fired; it hits each target once, harder near the middle. */
+interface Wave { obj: LineSegments2; mat: LineMaterial; x: number; y: number; r: number; max: number; dmg: number; half: number; hit: Set<object> }
+/** A coin dropped by a destroyed enemy: fly close and it comes to you. */
+interface Coin { x: number; y: number; vx: number; vy: number; v: number; age: number }
+/** Coins dropped per enemy kind (splitter fragments drop 5). */
+const COIN_VALUE: Record<EnemyKind, number> = { drone: 5, rock: 5, splitter: 10, fighter: 15, burster: 20, blinker: 25, cog: 100 };
+const MAX_COINS = 300;
+interface Pool { obj: LineSegments2; x: number; y: number; r: number; life: number; dps: number }
+
 export type Upgrade = "weapon" | "rapid" | "power" | "shield" | "repair" | "life";
 export const UPGRADES: Record<Upgrade, { name: string; color: number }> = {
-  weapon: { name: "+1 GUN", color: 0xff9020 },
+  weapon: { name: "+1 WEAPON LEVEL", color: 0xff9020 },
   rapid: { name: "FASTER FIRE", color: 0xffe040 },
   power: { name: "+25% DAMAGE", color: 0xff4060 },
   shield: { name: "SHIELD x4", color: 0x30c0ff },
   repair: { name: "REPAIR", color: 0x50ff60 },
   life: { name: "+1 LIFE", color: 0xff60ff },
 };
-interface Pod { obj: THREE.Group; mat: LineMaterial; x: number; y: number; kind: Upgrade }
+/** The bonuses in the order they are given (then it starts over), the same in every level. */
+export const BONUS_ORDER: Upgrade[] = ["weapon", "shield", "rapid", "power", "repair", "weapon", "rapid", "life", "power", "shield", "weapon", "rapid", "power", "repair", "life"];
 
 const MAX_SHOTS = 700, MAX_SPARKS = 1500;
-/** The ship's hit circles: small for bullets (the core), wider for bumping into enemies (the wings). */
-const SHIP_HIT = 16, SHIP_RAM = 28;
-/** Points between upgrade offers. */
+/** Points between bonuses. */
 export const BONUS_EVERY = 4000;
 
 export class Game {
@@ -97,11 +151,39 @@ export class Game {
   done = false; over = false; message = ""; messageT = 0;
   bigFight = 0;
   fireRate = 1; damage = 1;
+  /** The loadout in use: primaries (fire together), secondary and its cooldown, add-ons, hull. */
+  primaries: PrimaryKind[] = ["pulse"];
+  secondary: SecondaryKind | null = null;
+  /** This run's coins, what has been bought (weapons and add-ons owned; ship upgrade counts), weapon upgrades. */
+  coins = 0;
+  owned = new Set<string>(["pulse"]);
+  bought: Record<string, number> = {};
+  /** Stackable weapon / add-on upgrades bought this run: "owner.id" -> count (see shop.ts). */
+  mods: Record<string, number> = {};
+  private coinDrops: Coin[] = [];
+  private coinMesh: THREE.InstancedMesh;
+  secCool = 0;
+  addons: AddonKind[] = [];
+  hullKind: HullKind = "falcon";
+  maxHull = 100;
+  private speedMul = 1;
+  /** The ship's hit circles: small for bullets (the core), wider for bumping into enemies (the wings). */
+  private hitR = 16; private ramR = 28;
+  private shotColor = new THREE.Color(0.4, 1.6, 2.2);
+  private fireTs: Record<string, number> = {};
+  private missileT = 1; private regenT = 0; private lastHurt = -99; private wingT = 0;
+  private wingman: THREE.Object3D; private wingman2: THREE.Object3D; private wingMat: LineMaterial; private wx = 0; private wx2 = 0; private wy = -330;
+  private shipLines: LineSegments2 | null = null;
+  private laserBeam: THREE.Group; private laserCore: THREE.Mesh; private laserGlow: THREE.Mesh;
+  private zaps: Zap[] = []; private zapMat: LineMaterial;
+  private pools: Pool[] = []; private poolMat: LineMaterial;
+  private waves: Wave[] = [];
+  private quietHitT = 0;
   private skill: number;
   private waveRng: Rng;
   private ship: THREE.Group; private shipMat: LineMaterial; private flame: THREE.Mesh;
   private sx = 0; private sy = -330; private vx = 0; private vy = 0; private bank = 0;
-  private fireT = 0; private invuln = 2; private dead = 0;
+  private invuln = 2; private dead = 0;
   private shots: Shot[] = []; private eshots: Shot[] = [];
   private shotMesh: THREE.InstancedMesh; private eshotMesh: THREE.InstancedMesh;
   private enemies: Enemy[] = [];
@@ -113,12 +195,10 @@ export class Game {
   // Mini-boss
   boss: Boss | null = null;
   private bossIndex = 0;
-  // Upgrade offers
-  pods: Pod[] = [];
-  private offerIndex = 0;
-  /** Score at which the next upgrade offer appears. */
+  // Bonuses
+  private bonusIndex = 0;
+  /** Score at which the next bonus is given. */
   nextBonus = BONUS_EVERY;
-  private podTime = 0;
   private groups = new Map<number, WaveGroup>();
   private currentGroup = -1;
   // Tunnels
@@ -129,21 +209,42 @@ export class Game {
   private portal: { obj: THREE.Group; mats: LineMaterial[]; x: number; y: number } | null = null;
   // Hit-box view (H)
   showHits = false;
+  // Gallery demo
+  demo: DemoKind | null = null;
+  private demoT = 0; private demoSpawnT = 0; private demoSpawnedAt = 0; private demoPhase = -1;
+  private shieldRing: LineSegments2;
   private hitView = new THREE.Group();
 
-  constructor(readonly level: LevelDef, skill: number) {
+  constructor(readonly level: LevelDef, skill: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.skill = skill;
     this.waveRng = new Rng(level.seed * 31 + 7);
     this.lives = level.gentle?.endless ? 3 : skill === 0 ? 5 : skill === 2 ? 2 : 3;
-    // Ship: a neon arrow with wings, white-cyan.
+    // Ship: a neon outline in the loadout's shape and colour (see applyLoadout).
     this.shipMat = lineMaterial(0xbff8ff, 3, 2.2);
-    const hull = [[0, 46], [12, 10], [40, -18], [40, -28], [12, -18], [8, -30], [-8, -30], [-12, -18], [-40, -28], [-40, -18], [-12, 10]].map(([x, y]) => new THREE.Vector3(x, y, 0));
-    const canopy = [[0, 28], [5, 10], [0, 4], [-5, 10]].map(([x, y]) => new THREE.Vector3(x, y, 4));
     this.ship = new THREE.Group();
-    this.ship.add(polylines([hull, canopy], true, this.shipMat));
+    this.wingMat = lineMaterial(0xbff8ff, 2.5, 2);
+    this.wingman = polylines([[[0, 26], [17, -14], [0, -5], [-17, -14]].map(([x, y]) => new THREE.Vector3(x, y, 0)), [[0, 10], [5, -2], [-5, -2]].map(([x, y]) => new THREE.Vector3(x, y, 2))], true, this.wingMat);
+    this.wingman.visible = false;
+    this.root.add(this.wingman);
+    this.wingman2 = this.wingman.clone();
+    this.root.add(this.wingman2);
     this.flame = new THREE.Mesh(new THREE.CircleGeometry(9, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.55, 0.15).multiplyScalar(3), toneMapped: false }));
     this.flame.position.set(0, -36, -2);
     this.ship.add(this.flame);
+    this.shieldRing = polylines([circle(54, 40)], true, lineMaterial(0x30c0ff, 2.5, 1.6));
+    this.shieldRing.visible = false;
+    this.ship.add(this.shieldRing);
+    // Laser beam: a white core in a red glow, stretched from the nose to what it hits.
+    const plane = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    this.laserGlow = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.12, 0.35), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    this.laserCore = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 0.85, 1.1), toneMapped: false }));
+    this.laserCore.position.z = 1;
+    this.laserBeam = new THREE.Group();
+    this.laserBeam.add(this.laserGlow, this.laserCore);
+    this.laserBeam.visible = false;
+    this.root.add(this.laserBeam);
+    this.zapMat = lineMaterial(0xbb88ff, 3, 2.6);
+    this.poolMat = lineMaterial(0xff4a10, 3, 2.2);
     this.root.add(this.ship);
     const mk = (geo: THREE.BufferGeometry) => {
       const m = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ toneMapped: false }), MAX_SHOTS);
@@ -151,6 +252,9 @@ export class Game {
       m.setColorAt(0, new THREE.Color()); this.root.add(m); return m;
     };
     this.shotMesh = mk(new THREE.CircleGeometry(1, 12));
+    this.coinMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 4), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.9, 0.4), toneMapped: false }), MAX_COINS);
+    this.coinMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.coinMesh.count = 0; this.coinMesh.frustumCulled = false;
+    this.root.add(this.coinMesh);
     this.eshotMesh = mk(new THREE.CircleGeometry(1, 16));
     const sg = new THREE.BufferGeometry();
     sg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_SPARKS * 3), 3));
@@ -159,7 +263,28 @@ export class Game {
     this.sparkPts.frustumCulled = false;
     this.root.add(this.sparkPts);
     this.root.add(this.hitView);
+    this.applyLoadout(loadout, false);
   }
+
+  /** Puts the set-up on the ship: colour (any time), hull (not mid-run). */
+  applyLoadout(l: Loadout, midRun: boolean) {
+    const c = new THREE.Color(l.color);
+    this.shipMat.color.copy(c).multiplyScalar(2.2);
+    this.wingMat.color.copy(c).multiplyScalar(2);
+    this.shotColor = c.clone().multiplyScalar(2.1);
+    if (midRun && this.shipLines) return;
+    const h = HULLS[l.hull];
+    this.hullKind = l.hull;
+    this.maxHull = h.hull; this.hull = h.hull;
+    this.speedMul = h.speed; this.hitR = h.hit; this.ramR = h.ram;
+    if (this.shipLines) { this.ship.remove(this.shipLines); this.shipLines.geometry.dispose(); }
+    this.shipLines = polylines([h.shape.map(([x, y]) => new THREE.Vector3(x, y, 0)), h.canopy.map(([x, y]) => new THREE.Vector3(x, y, 4))], true, this.shipMat);
+    this.ship.add(this.shipLines);
+  }
+
+  has(a: AddonKind) { return this.addons.includes(a); }
+  /** How many of an upgrade have been bought for a weapon / add-on this run. */
+  mod(owner: string, id: string) { return this.mods[`${owner}.${id}`] ?? 0; }
 
   /** Which "minute" of the run this distance is (a minute's worth of flying at the level's speed). */
   get minute() { return Math.floor(this.dist / (this.level.speed * 60)); }
@@ -175,9 +300,11 @@ export class Game {
   dispose() {
     if (this.boss) this.removeBoss();
     for (const e of this.enemies) e.mats.forEach(disposeMaterial);
-    for (const p of this.pods) disposeMaterial(p.mat);
     for (const r of this.rings) disposeMaterial(r.mat);
-    disposeMaterial(this.shipMat);
+    disposeMaterial(this.shipMat); disposeMaterial(this.wingMat);
+    disposeMaterial(this.shieldRing.material as LineMaterial);
+    disposeMaterial(this.zapMat); disposeMaterial(this.poolMat);
+    for (const w of this.waves) disposeMaterial(w.mat);
     this.tunnel?.dispose();
     this.portal?.mats.forEach(disposeMaterial);
   }
@@ -187,6 +314,7 @@ export class Game {
   update(dt: number, input: Input) {
     this.messageT -= dt;
     this.flash = Math.max(0, this.flash - dt * 1.5);
+    if (this.demo) { this.updateDemo(dt); return; }
     if (this.done || this.over) { this.updateEffects(dt); return; }
     this.runTime += dt;
     if (this.tunnel) { this.updateTunnel(dt, input); return; }
@@ -198,11 +326,12 @@ export class Game {
     }
     this.updateShip(dt, input);
     this.updateWaves();
-    this.updateOffers(dt);
+    this.updateOffers();
     this.updatePortal(dt);
     this.updateBoss(dt);
     this.updateEnemies(dt);
     this.updateShots(dt);
+    this.updateCoins(dt);
     this.updateEffects(dt);
     this.drawHits();
     if (this.dist >= this.level.finish) {
@@ -216,15 +345,17 @@ export class Game {
 
   // --- Ship ---
   private updateShip(dt: number, input: Input) {
+    this.laserBeam.visible = false;
+    this.wingman.visible = false;
+    this.wingman2.visible = false;
     if (this.dead > 0) {
       this.dead -= dt;
       this.ship.visible = false;
-      if (this.dead <= 0) { this.ship.visible = true; this.sx = 0; this.sy = -330; this.hull = 100; this.invuln = 2.5; }
+      if (this.dead <= 0) { this.ship.visible = true; this.sx = 0; this.sy = -330; this.hull = this.maxHull; this.invuln = 2.5; }
       return;
     }
     const mv = input.move();
-    let speed = 760;
-    if (input.down("Space")) speed *= 1.6;
+    let speed = 760 * this.speedMul;
     if (input.down("ShiftLeft", "ShiftRight")) speed *= 0.45;
     const a = 1 - Math.exp(-dt / 0.07);
     this.vx += (mv.x * speed - this.vx) * a;
@@ -236,17 +367,260 @@ export class Game {
     this.ship.rotation.set(0, this.bank, 0);
     this.invuln -= dt;
     this.ship.visible = this.invuln <= 0 || Math.floor(this.runTime * 12) % 2 === 0;
-    this.flame.scale.setScalar((input.down("Space") ? 1.5 : 1) * (0.8 + 0.3 * Math.random()));
-    this.fireT -= dt;
-    if (input.fire() && this.fireT <= 0) {
-      this.fireT = 0.09 / this.fireRate;
-      const n = this.weapon;
-      for (let i = 0; i < n; i++) {
-        const off = i - (n - 1) / 2;
-        const ang = off * (n >= 3 ? 5 : 0) * (Math.PI / 180);
-        this.shots.push({ x: this.sx + off * 14, y: this.sy + 40, vx: Math.sin(ang) * 1900, vy: Math.cos(ang) * 1900, r: 6, color: new THREE.Color(0.4, 1.6, 2.2), dmg: this.damage, life: 1 });
+    this.shieldRing.visible = this.shieldHits > 0;
+    this.shieldRing.rotation.z += dt * 2;
+    this.flame.scale.setScalar(0.8 + 0.3 * Math.random());
+    for (const k in this.fireTs) this.fireTs[k] -= dt;
+    this.secCool -= dt;
+    this.quietHitT -= dt;
+    // Primaries (all of them, together) on the fire key.
+    // Primaries fire by themselves whenever an enemy is on screen (J / Z fires too, e.g. at nothing).
+    const firing = input.fire() || (!this.demo && this.targets().length > 0);
+    if (firing) for (const p of this.primaries) this.fireGun(dt, p);
+    // Secondary: its own key, then a cooldown.
+    if (input.fire2() && this.secondary && this.secCool <= 0) { this.fireGun(dt, this.secondary); this.secCool = this.cooldown(this.secondary); }
+    this.updateAddons(dt, firing);
+  }
+
+  /** The secondary's cooldown, with its upgrades and fire rate. */
+  cooldown(s: SecondaryKind) { return (COOLDOWN[s] * 0.85 ** this.mod(s, "cool")) / this.fireRate; }
+
+  // --- Add-ons ---
+  private updateAddons(dt: number, firing: boolean) {
+    // Homing missiles fire by themselves whenever there is something to hit.
+    this.missileT -= dt;
+    if (this.has("missiles") && this.missileT <= 0 && this.targets().some((t) => !t.shielded)) { this.fireGun(dt, "missile"); this.missileT = (MISSILE_EVERY * 0.85 ** this.mod("missiles", "reload")) / this.fireRate; }
+    // Shield regen: a shield hit every 12 s, up to 2.
+    if (this.has("regen") && this.shieldHits < 2 + this.mod("regen", "cap")) {
+      this.regenT += dt;
+      if (this.regenT >= 12 - 3 * this.mod("regen", "speed")) { this.regenT = 0; this.shieldHits++; sfx("shield", this.sx / HALF_W, 0.3, 1.4); this.burst(this.sx, this.sy, new THREE.Color(0.4, 1.2, 2), 8, 160); }
+    } else this.regenT = 0;
+    // Repair drone: after 3 s without a hit, the hull mends.
+    const rp = this.mod("repair", "speed");
+    if (this.has("repair") && this.runTime - this.lastHurt > 3 - rp && this.hull < this.maxHull) {
+      this.hull = Math.min(this.maxHull, this.hull + 5 * (1 + rp) * dt);
+      if (Math.random() < 0.15) this.spark(this.sx + (Math.random() - 0.5) * 50, this.sy - 20, 0, 80, 0.4, new THREE.Color(0.4, 2, 0.6));
+    }
+    // Wingman: a small drone trailing at your right (and a second on the left, if bought) that fires along with you.
+    const twin = this.mod("wingman", "twin") > 0;
+    this.wingman2.visible = false;
+    if (this.has("wingman")) {
+      const k = 1 - Math.exp(-dt * 12);
+      this.wx += (this.sx + 85 - this.wx) * k; this.wy += (this.sy - 14 - this.wy) * k;
+      this.wx2 += (this.sx - 85 - this.wx2) * k;
+      this.wingman.visible = this.ship.visible;
+      this.wingman.position.set(this.wx, this.wy, 0);
+      this.wingman.rotation.z = Math.sin(this.runTime * 3) * 0.15;
+      this.wingman2.visible = twin && this.ship.visible;
+      this.wingman2.position.set(this.wx2, this.wy, 0);
+      this.wingman2.rotation.z = -Math.sin(this.runTime * 3) * 0.15;
+      this.wingT -= dt;
+      if (firing && this.wingT <= 0) {
+        this.wingT = 0.2 / (this.fireRate * 1.2 ** this.mod("wingman", "rate"));
+        const d = 0.6 * this.damage * (1 + 0.3 * this.mod("wingman", "dmg"));
+        this.shots.push({ x: this.wx, y: this.wy + 22, vx: 0, vy: 1800, r: 4.5, color: this.shotColor, dmg: d, life: 1 });
+        if (twin) this.shots.push({ x: this.wx2, y: this.wy + 22, vx: 0, vy: 1800, r: 4.5, color: this.shotColor, dmg: d, life: 1 });
       }
-      sfx("playerShot", this.sx / HALF_W, 0.6);
+    } else { this.wx = this.sx; this.wx2 = this.sx; this.wy = this.sy; }
+  }
+
+  private fireGun(dt: number, kind: WeaponKind) {
+    const lvl = this.weapon, nx = this.sx, ny = this.sy + 40, pan = this.sx / HALF_W;
+    const rate = this.fireRate;
+    // Two primaries share the work.
+    const dmg = this.damage * ((kind === "pulse" || kind === "laser" || kind === "chain") && this.primaries.length > 1 ? DUAL_FACTOR : 1);
+    switch (kind) {
+      case "pulse": {
+        if ((this.fireTs.pulse ?? 0) > 0) return;
+        this.fireTs.pulse = 0.09 / (rate * 1.15 ** this.mod("pulse", "rate"));
+        // Guns side by side (weapon level + bought guns); a slight fan from 3 guns, wider with upgrades.
+        const guns = Math.min(8, lvl + this.mod("pulse", "guns"));
+        const spread = (guns >= 3 ? 5 : 0) + (guns >= 2 ? 4 * this.mod("pulse", "spread") : 0);
+        const d = dmg * (1 + 0.2 * this.mod("pulse", "dmg")), pierce = this.mod("pulse", "pierce");
+        for (let i = 0; i < guns; i++) {
+          const off = i - (guns - 1) / 2;
+          const ang = off * spread * (Math.PI / 180);
+          this.shots.push({ x: nx + off * 14, y: ny, vx: Math.sin(ang) * 1900, vy: Math.cos(ang) * 1900, r: 6, color: this.shotColor, dmg: d, life: 1, pierce });
+        }
+        sfx("playerShot", pan, 0.6);
+        return;
+      }
+      case "laser": {
+        // A continuous beam straight ahead: it stops at the first thing in its way and burns it
+        // (with pierce upgrades it burns through to the next ones too).
+        const half = (4 + 2.5 * lvl) * (1 + 0.3 * this.mod("laser", "width"));
+        const inBeam: { t: Target; y: number }[] = [];
+        for (const t of this.targets()) {
+          if (t.y < ny - t.r || Math.abs(t.x - nx) > t.r + half) continue;
+          inBeam.push({ t, y: Math.max(ny, t.y - Math.sqrt(Math.max(0, (t.r + half) ** 2 - (t.x - nx) ** 2)) * 0.8) });
+        }
+        inBeam.sort((a, b) => a.y - b.y);
+        const burned = inBeam.slice(0, 1 + this.mod("laser", "pierce"));
+        const end = burned.length > this.mod("laser", "pierce") ? burned[burned.length - 1].y : HALF_H + 60;
+        const hit = burned.length > 0;
+        const len = end - ny, flick = 0.85 + 0.3 * Math.random();
+        this.laserBeam.visible = true;
+        this.laserBeam.position.set(nx, ny, 3);
+        this.laserGlow.scale.set(half * 1.6 * flick, len, 1);
+        this.laserCore.scale.set(half * 0.4, len, 1);
+        if (hit) {
+          for (const b of burned) b.t.hit((12 + 5 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
+          if (Math.random() < 0.6) this.spark(nx, burned[0].y, 0, -200, 0.25, new THREE.Color(2.4, 0.6, 1));
+        }
+        sfx("laser", pan, 0.35, 1.6);
+        return;
+      }
+      case "missile": {
+        // A volley of missiles that fan out, then find their own targets.
+        const count = Math.min(9, lvl + this.mod("missiles", "count")), md = 3.5 * dmg * (1 + 0.25 * this.mod("missiles", "dmg")), blast = 45 * this.mod("missiles", "blast");
+        for (let i = 0; i < count; i++) {
+          const off = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+          this.shots.push({ x: nx + off * 20, y: ny - 10, vx: off * 420, vy: 380, r: 5, color: new THREE.Color(2.2, 1.3, 0.4), dmg: md, life: 2.4, kind: "missile", target: null, blast });
+        }
+        sfx("missile", pan, 0.5);
+        return;
+      }
+      case "lava": {
+        // A slow ball of lava that bursts over an area and leaves a burning pool.
+        // Upgrades: damage, side balls angled out.
+        const ld = (8 + 4 * lvl) * 2.5 * (1 + 0.25 * this.mod("lava", "dmg")) * dmg, balls = this.mod("lava", "balls");
+        for (let i = -balls; i <= balls; i++) {
+          const a = (i * 13 * Math.PI) / 180;
+          this.shots.push({ x: nx, y: ny, vx: Math.sin(a) * 900, vy: Math.cos(a) * 900, r: 13 + 1.5 * lvl, color: new THREE.Color(2.6, 0.7, 0.15), dmg: ld, life: 0.75, kind: "lava" });
+        }
+        sfx("lava", pan, 0.6);
+        return;
+      }
+      case "shock": {
+        // A shockwave rolling out; whatever it reaches takes a hit, harder the closer it is.
+        // A half ring ahead; wider-arc upgrades bend it round (two make a full ring around the ship).
+        const full = this.mod("shock", "arc") >= 2;
+        const half = Math.PI / 2 + (this.mod("shock", "arc") * Math.PI) / 4;
+        const mat = lineMaterial(0x55ffdd, 4, 2.4, 0.99);
+        const n = full ? 48 : 32 + 8 * this.mod("shock", "arc");
+        const arc = Array.from({ length: n + 1 }, (_, i) => { const a = Math.PI / 2 - half + (i / n) * half * 2; return new THREE.Vector3(Math.cos(a), Math.sin(a), 0); });
+        const obj = polylines([arc, arc.map((v) => v.clone().multiplyScalar(0.94))], full, mat);
+        const oy = full ? this.sy : ny - 20;
+        obj.position.set(nx, oy, 3);
+        obj.scale.setScalar(20);
+        this.root.add(obj);
+        this.waves.push({ obj, mat, x: nx, y: oy, r: 20, max: (300 + 40 * lvl) * (1 + 0.2 * this.mod("shock", "range")), dmg: (9 + 4 * lvl) * 2.5 * (1 + 0.25 * this.mod("shock", "dmg")) * dmg, half, hit: new Set() });
+        sfx("shock", pan, 0.55);
+        return;
+      }
+      case "chain": {
+        // A bolt to the nearest enemy ahead that jumps on to 1-3 more nearby (more and longer jumps per level), 25% weaker per jump.
+        if ((this.fireTs.chain ?? 0) > 0) return;
+        this.fireTs.chain = 0.3 / (rate * 1.15 ** this.mod("chain", "rate"));
+        const all = this.targets().filter((t) => !t.shielded);
+        let from: [number, number] = [nx, ny];
+        const path: THREE.Vector3[] = [new THREE.Vector3(nx, ny, 4)];
+        const used = new Set<Target>();
+        const hits = 1 + (lvl <= 1 ? 1 : lvl <= 3 ? 2 : 3) + this.mod("chain", "jump"), reach = (200 + 50 * lvl) * (1 + 0.25 * this.mod("chain", "reach"));
+        const keep = 0.75 + 0.08 * this.mod("chain", "falloff"), cd = 5 * (1 + 0.2 * this.mod("chain", "dmg"));
+        for (let j = 0; j < hits; j++) {
+          let best: Target | null = null, bd = j === 0 ? 720 : reach;
+          for (const t of all) {
+            if (used.has(t)) continue;
+            if (j === 0 && t.y < ny - 40) continue;
+            const d = Math.hypot(t.x - from[0], t.y - from[1]) - t.r;
+            if (d < bd) { bd = d; best = t; }
+          }
+          if (!best) break;
+          used.add(best);
+          // A jagged bolt from here to there.
+          const [x0, y0] = from, x1 = best.x, y1 = best.y, segs = 6;
+          for (let k = 1; k <= segs; k++) {
+            const f = k / segs, jit = k === segs ? 0 : 22;
+            path.push(new THREE.Vector3(x0 + (x1 - x0) * f + (Math.random() - 0.5) * jit, y0 + (y1 - y0) * f + (Math.random() - 0.5) * jit, 4));
+          }
+          best.hit(cd * dmg * keep ** j, false);
+          this.burst(x1, y1, new THREE.Color(1.6, 1, 2.6), 5, 220);
+          from = [x1, y1];
+        }
+        if (path.length > 1) {
+          const obj = polylines([path], false, this.zapMat);
+          this.root.add(obj);
+          this.zaps.push({ obj, life: 0.12 });
+          sfx("lightning", pan, 0.35);
+        } else {
+          // Nothing in reach: a short fizzle ahead.
+          this.spark(nx, ny + 10, 0, 300, 0.15, new THREE.Color(1.4, 1, 2.4));
+        }
+        return;
+      }
+    }
+  }
+
+  /** Everything the ship's weapons can hit right now (enemies on screen, mini-boss parts). */
+  private targets(): Target[] {
+    const out: Target[] = [];
+    for (const e of this.enemies) {
+      if (e.dying > 0 || e.y > HALF_H + e.r * 0.3) continue;
+      out.push({ ref: e, get x() { return e.x; }, get y() { return e.y; }, r: e.r, shielded: false, alive: () => e.dying <= 0 && this.enemies.includes(e), hit: (d, q) => this.hitEnemy(e, d, q) });
+    }
+    const b = this.boss;
+    if (b) for (const p of b.parts) {
+      if (!p.alive) continue;
+      out.push({ ref: p, get x() { return b.x + p.ox; }, get y() { return b.y + p.oy; }, r: p.r, shielded: p.stage > b.stage, alive: () => p.alive && this.boss === b, hit: (d, q) => { if (this.boss === b && p.alive) this.hitPart(p, d, b.x + p.ox, b.y + p.oy, q); } });
+    }
+    return out;
+  }
+
+  /** Area damage: everything within reach of (x, y). */
+  private blast(x: number, y: number, r: number, dmg: number, quiet: boolean) {
+    for (const t of this.targets()) if (Math.hypot(t.x - x, t.y - y) < r + t.r) t.hit(dmg, quiet);
+  }
+
+  private lavaBurst(s: Shot) {
+    if (s.done) return;
+    s.done = true; s.life = 0;
+    const lvl = this.weapon, r = (90 + 15 * lvl) * (1 + 0.2 * this.mod("lava", "radius"));
+    this.blast(s.x, s.y, r, s.dmg, false);
+    this.explode(s.x, s.y, new THREE.Color(2.6, 0.8, 0.2), 1.1);
+    for (let i = 0; i < 26; i++) { const a = Math.random() * Math.PI * 2, sp = r * (1.5 + Math.random() * 2); this.spark(s.x, s.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.4, new THREE.Color(2.6, 0.5 + Math.random(), 0.1)); }
+    // A burning pool that keeps hurting for a while.
+    const pr = r * 0.7;
+    const obj = polylines([circle(pr, 36), circle(pr * 0.6, 28)], true, this.poolMat);
+    obj.position.set(s.x, s.y, 1);
+    this.root.add(obj);
+    this.pools.push({ obj, x: s.x, y: s.y, r: pr, life: 2 * (1 + 0.5 * this.mod("lava", "pool")), dps: (8 + 3 * lvl) * (1 + 0.25 * this.mod("lava", "dmg")) * this.damage });
+  }
+
+  private spark(x: number, y: number, vx: number, vy: number, life: number, color: THREE.Color) {
+    if (this.sparks.length >= MAX_SPARKS) return;
+    this.sparks.push({ pos: new THREE.Vector3(x, y, 5), vel: new THREE.Vector3(vx, vy, 0), life: 0, max: life, color });
+  }
+
+  /** Bolts fade, pools burn out. */
+  private updateWeaponFx(dt: number) {
+    for (const w of [...this.waves]) {
+      w.r += 950 * dt;
+      const f = Math.min(1, w.r / w.max);
+      w.obj.scale.setScalar(w.r);
+      w.mat.opacity = 1 - f * 0.85;
+      for (const t of this.targets()) {
+        if (w.hit.has(t.ref)) continue;
+        const d = Math.hypot(t.x - w.x, t.y - w.y);
+        if (d - t.r > w.r) continue;  // not reached yet
+        if (w.half < Math.PI && Math.abs(Math.atan2(t.x - w.x, t.y - w.y)) > w.half + Math.atan2(t.r, Math.max(1, d))) continue;  // outside its arc
+        w.hit.add(t.ref);
+        t.hit(w.dmg * (1 - 0.75 * Math.min(1, d / w.max)), false);  // full strength close by, a quarter at the edge
+        this.burst(t.x, t.y, new THREE.Color(0.6, 2, 1.8), 6, 240);
+      }
+      if (w.r >= w.max) { this.root.remove(w.obj); w.obj.geometry.dispose(); disposeMaterial(w.mat); this.waves.splice(this.waves.indexOf(w), 1); }
+    }
+    for (const z of [...this.zaps]) {
+      z.life -= dt;
+      if (z.life <= 0) { this.root.remove(z.obj); z.obj.geometry.dispose(); this.zaps.splice(this.zaps.indexOf(z), 1); }
+    }
+    for (const p of [...this.pools]) {
+      p.life -= dt;
+      p.obj.rotation.z += dt * 1.5;
+      p.obj.scale.setScalar(0.9 + 0.1 * Math.sin(p.life * 20));
+      if (Math.random() < 0.5) { const a = Math.random() * Math.PI * 2, d = Math.random() * p.r; this.spark(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0, 60, 0.35, new THREE.Color(2.4, 0.6, 0.1)); }
+      this.blast(p.x, p.y, p.r, p.dps * dt, true);
+      if (p.life <= 0) { this.root.remove(p.obj); p.obj.geometry.dispose(); this.pools.splice(this.pools.indexOf(p), 1); }
     }
   }
 
@@ -258,9 +632,11 @@ export class Game {
 
   hurt(dmg: number) {
     if (this.dead > 0 || this.invuln > 0 || this.over) return;
-    if (this.shieldHits > 0) { this.shieldHits--; this.invuln = 0.3; sfx("shield", this.sx / HALF_W); return; }
+    if (this.shieldHits > 0) { this.shieldHits--; this.invuln = 0.3; sfx("shield", this.sx / HALF_W); this.burst(this.sx, this.sy, new THREE.Color(0.4, 1.2, 2), 10, 260); return; }
+    if (this.demo) { this.invuln = 0.4; sfx("hurt", this.sx / HALF_W, 0.5); this.burst(this.sx, this.sy, new THREE.Color(0.5, 0.9, 1.4), 12, 300); return; }  // the gallery ship can't die
     const scale = (this.skill === 0 ? 0.6 : this.skill === 2 ? 1.3 : 1) * (this.level.gentle?.damage ?? 1);
     this.hull -= dmg * scale;
+    this.lastHurt = this.runTime;
     this.invuln = 0.4;
     sfx("hurt", this.sx / HALF_W, 0.8);
     this.burst(this.sx, this.sy, new THREE.Color(0.5, 0.9, 1.4), 12, 300);
@@ -386,7 +762,7 @@ export class Game {
       if (e.kind === "cog") { e.obj.rotation.z += e.spin * dt; this.bigFight = 1; }
       else e.obj.rotation.set(Math.sin(T * 1.7) * 0.5, Math.cos(T * 1.3) * 0.55, T * e.spin);
       if (e.y < -HALF_H - 200 || e.y > HALF_H + 900 || Math.abs(e.x) > HALF_W + 600) { this.remove(e); continue; }
-      if (this.dead <= 0 && Math.hypot(e.x - this.sx, e.y - this.sy) < e.r + SHIP_RAM) { this.hurt(e.kind === "cog" ? 40 : 30); if (e.kind !== "cog") this.kill(e, false); continue; }
+      if (this.dead <= 0 && Math.hypot(e.x - this.sx, e.y - this.sy) < e.r + this.ramR) { this.hurt(e.kind === "cog" ? 40 : 30); if (e.kind !== "cog") this.kill(e, false); continue; }
       this.enemyFire(e, dt);
     }
   }
@@ -399,7 +775,7 @@ export class Game {
       e.blinkT -= dt;
       if (e.blinkT <= 0) {
         e.blinkT = e.rng.range(1.8, 2.5);
-        const wx = e.rng.range(-HALF_W + 150, HALF_W - 150), wy = e.rng.range(0, HALF_H - 120);
+        const wx = this.demo ? DEMO_X + e.rng.range(-300, 300) : e.rng.range(-HALF_W + 150, HALF_W - 150), wy = e.rng.range(0, HALF_H - 120);
         this.burst(e.x, e.y, e.color, 10, 200);
         e.ox += wx - e.x; e.oy += wy - e.y;
         this.burst(wx, wy, e.color, 10, 200);
@@ -436,17 +812,21 @@ export class Game {
     sfx("enemyShot", e.x / HALF_W, 0.5, r > 11 ? 0.7 : 1);
   }
 
-  private hitEnemy(e: Enemy, dmg: number) {
+  private hitEnemy(e: Enemy, dmg: number, quiet = false) {
     if (e.dying > 0 || e.y > HALF_H + e.r * 0.3) return;  // only once (mostly) on screen
     e.hp -= dmg;
-    e.obj.scale.setScalar(1.12);
-    setTimeout(() => e.obj.scale.setScalar(1), 50);
-    sfx("hit", e.x / HALF_W, 0.4);
+    // Beams and pools hit every frame: flash and click only now and then.
+    if (!quiet || this.quietHitT <= 0) {
+      if (quiet) this.quietHitT = 0.1;
+      e.obj.scale.setScalar(1.12);
+      setTimeout(() => e.obj.scale.setScalar(1), 50);
+      sfx("hit", e.x / HALF_W, 0.4);
+    }
     if (e.hp <= 0) this.kill(e, true);
   }
 
   private kill(e: Enemy, scored: boolean) {
-    if (scored) this.score += e.score;
+    if (scored) { this.score += e.score; this.dropCoins(e.x, e.y, e.fragment ? 5 : COIN_VALUE[e.kind]); }
     e.counted = true;
     const wg = this.groups.get(e.group);
     if (wg) {
@@ -472,6 +852,7 @@ export class Game {
     if (wg.spoiled) return;
     const bonus = Math.max(100, Math.round(wg.value / 2 / 10) * 10);
     this.score += bonus;
+    this.dropCoins(x, y, 10);
     this.say(`WAVE CLEARED  +${bonus}`, 1.4);
     this.burst(x, y, new THREE.Color(2, 1.8, 0.6), 24, 380);
   }
@@ -530,18 +911,23 @@ export class Game {
     }
   }
 
-  private hitPart(p: BossPart, dmg: number, x: number, y: number) {
+  private hitPart(p: BossPart, dmg: number, x: number, y: number, quiet = false) {
     const b = this.boss!;
-    if (p.stage > b.stage) { this.burst(x, y, new THREE.Color(0.6, 0.8, 2), 4, 200); sfx("shield", x / HALF_W, 0.25, 1.6); return; }  // shielded: not yet
+    const show = !quiet || this.quietHitT <= 0;
+    if (show && quiet) this.quietHitT = 0.1;
+    if (p.stage > b.stage) { if (show) { this.burst(x, y, new THREE.Color(0.6, 0.8, 2), 4, 200); sfx("shield", x / HALF_W, 0.25, 1.6); } return; }  // shielded: not yet
     p.hp -= dmg;
-    p.obj.scale.setScalar(1.1);
-    setTimeout(() => p.obj.scale.setScalar(1), 50);
-    sfx("hit", x / HALF_W, 0.4);
+    if (show) {
+      p.obj.scale.setScalar(1.1);
+      setTimeout(() => p.obj.scale.setScalar(1), 50);
+      sfx("hit", x / HALF_W, 0.4);
+    }
     if (p.hp > 0) return;
     p.alive = false;
     p.obj.visible = false;
     this.explode(b.x + p.ox, b.y + p.oy, new THREE.Color(p.mat.color.getHex()).multiplyScalar(1.4), p.kind === "core" ? 3 : 1.3);
     this.score += Math.round(((p.kind === "core" ? 5000 : p.kind === "generator" ? 1200 : 800) * (1 + 0.2 * this.minute)) / 10) * 10;
+    this.dropCoins(b.x + p.ox, b.y + p.oy, p.kind === "core" ? 200 : p.kind === "generator" ? 60 : 40);
     if (b.parts.some((q) => q.alive && q.stage === b.stage)) return;
     // Stage cleared: the next parts lose their shields.
     b.stage++;
@@ -582,9 +968,9 @@ export class Game {
     this.bigFight = 1;
     // In, hover and sway; it leaves after a while (or when a tunnel comes).
     if (b.age > 50 || (this.level.tunnels[this.tunnelIndex] && this.dist > this.level.tunnels[this.tunnelIndex].at - 150)) b.leaving = true;
-    const targetY = b.leaving ? HALF_H + 500 : HALF_H - 230;
+    const targetY = b.leaving ? HALF_H + 500 : HALF_H - (this.demo ? 290 : 230);
     b.y += (targetY - b.y) * (1 - Math.exp(-dt * (b.leaving ? 1.2 : 0.8)));
-    b.x = Math.sin(b.age * 0.35) * 260;
+    b.x = this.demo ? DEMO_X + Math.sin(b.age * 0.35) * 110 : Math.sin(b.age * 0.35) * 260;
     b.frame.position.set(b.x, b.y, 0);
     b.frame.rotation.z = Math.sin(b.age * 0.5) * 0.06;
     if (b.leaving && b.y > HALF_H + 420) { this.say("THE MINI-BOSS GOT AWAY"); this.removeBoss(); return; }
@@ -614,56 +1000,31 @@ export class Game {
     }
   }
 
-  // --- Upgrade offers: every 4,000 points, three different ones mid-screen; take one ---
-  private updateOffers(dt: number) {
-    if (this.pods.length === 0 && !this.portal && this.score >= this.nextBonus) {
-      this.nextBonus = (Math.floor(this.score / BONUS_EVERY) + 1) * BONUS_EVERY;
-      this.podTime = 0;
-      const r = new Rng(this.level.seed * 977 + this.offerIndex * 131);
-      this.offerIndex++;
-      const all: Upgrade[] = ["weapon", "rapid", "power", "shield", "repair", "life"];
-      const pick: Upgrade[] = [];
-      while (pick.length < 3) { const u = r.pick(all); if (!pick.includes(u)) pick.push(u); }
-      pick.forEach((kind, i) => {
-        const mat = lineMaterial(UPGRADES[kind].color, 3.5, 2.4);
-        const obj = new THREE.Group();
-        const icon = kind === "weapon" ? polygon(3, 16) : kind === "rapid" ? star(4, 18, 0.4) : kind === "power" ? star(6, 18, 0.5) : kind === "shield" ? circle(13, 16) : kind === "repair" ? cross(15, 5) : polygon(4, 15, 0);
-        obj.add(polylines([polygon(6, 42, 0), icon], true, mat));
-        this.root.add(obj);
-        this.pods.push({ obj, mat, x: (i - 1) * 420, y: 40, kind });
-        this.burst((i - 1) * 420, 40, new THREE.Color(UPGRADES[kind].color), 20, 260);
-      });
-      this.say("BONUS!  CHOOSE ONE", 1.6);
-      sfx("powerUp", 0, 0.6, 1.3);
-    }
-    if (this.pods.length === 0) return;
-    // They hover mid-screen for a few seconds, blinking as they're about to go.
-    this.podTime += dt;
-    for (const p of [...this.pods]) {
-      p.obj.position.set(p.x, p.y + Math.sin(this.podTime * 3 + p.x) * 10, 0);
-      p.obj.rotation.z += dt * 1.5;
-      p.obj.visible = this.podTime < 5.5 || Math.floor(this.podTime * 8) % 2 === 0;
-      if (this.dead <= 0 && Math.hypot(p.x - this.sx, p.y - this.sy) < 42 + SHIP_RAM) { this.take(p.kind); this.clearPods(); return; }
-    }
-    if (this.podTime > 7) { this.say("BONUS MISSED"); this.clearPods(); }
+  // --- Bonuses: every 4,000 points the next upgrade in a fixed order is given straight away ---
+  private updateOffers() {
+    if (this.portal || this.score < this.nextBonus) return;
+    this.nextBonus = (Math.floor(this.score / BONUS_EVERY) + 1) * BONUS_EVERY;
+    const kind = this.nextUpgrade;
+    this.bonusIndex++;
+    this.take(kind);
+    this.burst(this.sx, this.sy, new THREE.Color(UPGRADES[kind].color), 30, 320);
   }
 
+  /** The upgrade the next bonus gives. */
+  get nextUpgrade(): Upgrade { return BONUS_ORDER[this.bonusIndex % BONUS_ORDER.length]; }
+
   private take(kind: Upgrade) {
+    let extra = "";
     switch (kind) {
-      case "weapon": if (this.weapon < 5) this.weapon++; else this.score += 2000; break;
+      case "weapon": if (this.weapon < 5) this.weapon++; else { this.score += 2000; extra = "  (MAX: +2,000)"; } break;
       case "rapid": this.fireRate = Math.min(2, this.fireRate * 1.18); break;
       case "power": this.damage *= 1.25; break;
       case "shield": this.shieldHits += 4; break;
-      case "repair": this.hull = Math.min(100, this.hull + 60); break;
+      case "repair": this.hull = Math.min(this.maxHull, this.hull + 0.6 * this.maxHull); break;
       case "life": this.lives++; break;
     }
-    this.say(UPGRADES[kind].name);
+    this.say("BONUS!  " + UPGRADES[kind].name + extra, 2);
     sfx("powerUp", this.sx / HALF_W, 0.9);
-  }
-
-  private clearPods() {
-    for (const p of this.pods) { this.burst(p.x, p.y, new THREE.Color(UPGRADES[p.kind].color), 14, 220); this.root.remove(p.obj); disposeMaterial(p.mat); }
-    this.pods = [];
   }
 
   // --- Tunnels: mandatory, at fixed distances ---
@@ -702,8 +1063,9 @@ export class Game {
     for (const e of [...this.enemies]) this.remove(e);
     if (this.boss) this.removeBoss();
     this.eshots = [];
-    this.clearPods();
-    if (this.dead > 0) { this.dead = 0; this.hull = 100; }
+    this.coinDrops = [];
+    this.coinMesh.count = 0;
+    if (this.dead > 0) { this.dead = 0; this.hull = this.maxHull; }
   }
 
   private updateTunnel(dt: number, input: Input) {
@@ -725,10 +1087,137 @@ export class Game {
       this.weapon = Math.max(1, this.weapon - 1);
       this.loseLife();
     } else {
-      const bonus = 2000 * this.tunnelIndex;
+      const bonus = 2000 * this.tunnelIndex, coins = 50 * this.tunnelIndex;
       this.score += bonus;
-      this.say(`TUNNEL CLEARED  +${bonus}`);
+      this.coins += coins;
+      this.say(`TUNNEL CLEARED  +${bonus}   +${coins} COINS`);
       sfx("powerUp", 0, 1);
+    }
+  }
+
+  // --- Gallery: one enemy (or the ship) at a time, using the real game logic ---
+  /** Show this in the gallery: clears the field and starts its demo. */
+  setDemo(kind: DemoKind) {
+    for (const e of [...this.enemies]) this.remove(e);
+    if (this.boss) this.removeBoss();
+    this.shots = []; this.eshots = [];
+    this.demo = kind;
+    this.demoT = 0; this.demoSpawnT = 0.5; this.demoSpawnedAt = 0; this.demoPhase = -1;
+    this.weapon = kind === "ship" ? 1 : kind === "fortress" || kind === "dreadnought" ? 4 : 3;
+    this.primaries = ["pulse"];
+    this.addons = [];
+    this.secondary = null;
+    this.coinDrops = [];
+    for (const p of this.pools) { this.root.remove(p.obj); p.obj.geometry.dispose(); }
+    this.pools = [];
+    for (const w of this.waves) { this.root.remove(w.obj); w.obj.geometry.dispose(); disposeMaterial(w.mat); }
+    this.waves = [];
+    this.fireRate = 1; this.damage = 1; this.shieldHits = 0; this.hull = this.maxHull;
+    this.sx = DEMO_X; this.sy = -300; this.vx = 0; this.vy = 0; this.invuln = 0;
+    this.showHits = false;
+    this.messageT = 0;
+  }
+
+  private updateDemo(dt: number) {
+    const k = this.demo!;
+    this.runTime += dt;
+    this.demoT += dt;
+    const isBoss = k === "fortress" || k === "dreadnought";
+    let fire = false, fire2 = false, slow = false;
+    let tx = DEMO_X + Math.sin(this.runTime * 0.9) * 170;
+    if (k === "hangar") {
+      // The hangar preview: the ship flies its loadout against a shower of rocks.
+      fire = true; fire2 = true;
+      tx = this.demoRocks(dt);
+    } else if (k === "ship" || k === "weapons") {
+      // Walk through the ship's abilities (or its weapons), one at a time, then start over.
+      const steps = k === "ship" ? SHIP_DEMO : WEAPON_DEMO;
+      const total = steps.reduce((a, p) => a + p.t, 0);
+      let t = this.demoT % total, phase = 0;
+      while (t >= steps[phase].t) { t -= steps[phase].t; phase++; }
+      const st = steps[phase];
+      if (phase !== this.demoPhase) {
+        this.demoPhase = phase;
+        this.say(st.msg, st.t - 0.2);
+        this.weapon = st.lvl;
+        this.fireRate = st.rate ?? 1;
+        this.primaries = [st.gun ?? "pulse"];
+        if (st.sec) this.secondary = st.sec;
+        this.secCool = 0;
+        this.addons = st.missiles ? ["missiles"] : [];
+        this.showHits = !!st.hits;
+        if (phase === 0) this.shieldHits = 0;
+        if (st.targets || st.hits) { for (const e of [...this.enemies]) this.remove(e); this.demoSpawnT = 0; }
+        if (st.shield) {
+          this.shieldHits = 4;
+          for (let i = 0; i < 3; i++) { const e = this.spawn("drone", DEMO_X + (i - 1) * 150, HALF_H + 40 + i * 90, 1, 0, false, 77 + i); e.fire = 0.2; e.fireMin = 0.5; e.fireMax = 0.7; }
+        }
+      }
+      fire = !st.hold && !st.sec && !st.missiles;
+      fire2 = !!st.sec;
+      slow = !!st.slow;
+      if (slow) tx = DEMO_X + Math.sin(this.runTime * 2.4) * 380;
+      if (st.hold) tx = DEMO_X;  // hold still (and let the shield take the hits)
+      if (st.targets) tx = this.demoRocks(dt);
+    } else {
+      // Bring it on, watch it for a moment, then shoot it down; again once it's gone.
+      const empty = isBoss ? !this.boss : this.enemies.length === 0;
+      if (empty) { this.demoSpawnT -= dt; if (this.demoSpawnT <= 0) { this.demoSpawn(k); this.demoSpawnT = 1.2; } }
+      const watch: Record<string, number> = { drone: 2.6, rock: 1.6, splitter: 3, fighter: 3.4, burster: 4.2, blinker: 5, cog: 7, fortress: 5, dreadnought: 5 };
+      if (this.demoT - this.demoSpawnedAt > watch[k]) {
+        fire = true;
+        if (this.boss) {
+          const b = this.boss;
+          const p = b.parts.find((q) => q.alive && q.stage === b.stage);
+          if (p) tx = b.x + p.ox;
+        } else {
+          const e = this.enemies.find((q) => q.dying <= 0 && q.y < HALF_H);
+          if (e) tx = e.x;
+        }
+      }
+    }
+    const fake = {
+      move: () => ({ x: clamp((tx - this.sx) / 90, -1, 1), y: clamp((-300 - this.sy) / 80, -1, 1) }),
+      fire: () => fire,
+      fire2: () => fire2,
+      down: (...keys: string[]) => slow && keys.includes("ShiftLeft"),
+      hit: () => false,
+    } as unknown as Input;
+    this.updateShip(dt, fake);
+    this.updateBoss(dt);
+    this.updateEnemies(dt);
+    this.updateShots(dt);
+    this.updateEffects(dt);
+    this.drawHits();
+  }
+
+  /** A shower of rocks to try weapons on, again whenever they're nearly gone. Returns where to aim (the nearest). */
+  private demoRocks(dt: number): number {
+    if (this.enemies.filter((e) => e.dying <= 0).length < 2) {
+      this.demoSpawnT -= dt;
+      if (this.demoSpawnT <= 0) {
+        this.demoSpawnT = 0.8;
+        for (let i = 0; i < 5; i++) this.spawn("rock", DEMO_X + (i - 2) * 85, HALF_H + 60 + (i % 2) * 70 + i * 25, i % 2 ? 1 : -1, 25, false, 900 + this.waveIndex++ * 13);
+      }
+    }
+    let best: Enemy | null = null;
+    for (const e of this.enemies) if (e.dying <= 0 && e.y < HALF_H && (!best || e.y < best.y)) best = e;
+    return best ? best.x : DEMO_X;
+  }
+
+  private demoSpawn(k: DemoKind) {
+    this.demoSpawnedAt = this.demoT;
+    const top = HALF_H + 80, X = DEMO_X;
+    const add = (kind: EnemyKind, x: number, y: number, side = 1, param = 0) => this.spawn(kind, x, y, side, param, false, 5000 + this.waveIndex++ * 97);
+    switch (k) {
+      case "drone": for (let i = 0; i < 3; i++) add("drone", X, top + i * 140); break;
+      case "rock": for (let i = 0; i < 4; i++) add("rock", X + (i - 1.5) * 130, top + i * 110, i % 2 ? 1 : -1, 40); break;
+      case "fighter": add("fighter", X - 380, top + 40, 1); break;
+      case "burster": add("burster", X, top, 1); break;
+      case "splitter": add("splitter", X, top, 1); break;
+      case "blinker": add("blinker", X, top); break;
+      case "cog": add("cog", X, top + 280, 1); break;
+      case "fortress": case "dreadnought": this.spawnBoss(k); break;
     }
   }
 
@@ -743,7 +1232,7 @@ export class Game {
     };
     for (const e of this.enemies) if (e.dying <= 0) ring(e.x, e.y, e.r, 0xffff00);
     if (this.boss) for (const p of this.boss.parts) if (p.alive) ring(this.boss.x + p.ox, this.boss.y + p.oy, p.r, p.stage === this.boss.stage ? 0xffff00 : 0x6666ff);
-    if (this.dead <= 0) { ring(this.sx, this.sy, SHIP_HIT, 0x00ff00); ring(this.sx, this.sy, SHIP_RAM, 0x008800); }
+    if (this.dead <= 0) { ring(this.sx, this.sy, this.hitR, 0x00ff00); ring(this.sx, this.sy, this.ramR, 0x008800); }
     for (const s of this.eshots) ring(s.x, s.y, s.r, 0xff00ff);
   }
 
@@ -763,6 +1252,26 @@ export class Game {
 
   // --- Shots ---
   private updateShots(dt: number) {
+    // Missiles steer towards their target (a new one if it's gone), trailing sparks.
+    let targets: Target[] | null = null;
+    for (const s of this.shots) {
+      if (s.kind !== "missile") continue;
+      if (!s.target || !s.target.alive()) {
+        targets ??= this.targets().filter((t) => !t.shielded);
+        let best: Target | null = null, bd = 1e9;
+        for (const t of targets) { const d = Math.hypot(t.x - s.x, t.y - s.y) + (t.y < s.y ? 400 : 0); if (d < bd) { bd = d; best = t; } }
+        s.target = best;
+      }
+      const sp = Math.min(1250, Math.hypot(s.vx, s.vy) + 1800 * dt);
+      let ang = Math.atan2(s.vy, s.vx);
+      if (s.target) {
+        const want = Math.atan2(s.target.y - s.y, s.target.x - s.x);
+        let d = want - ang; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+        ang += clamp(d, -7 * dt, 7 * dt);
+      }
+      s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp;
+      if (Math.random() < 0.7) this.spark(s.x, s.y, -s.vx * 0.1 + (Math.random() - 0.5) * 40, -s.vy * 0.1 + (Math.random() - 0.5) * 40, 0.25, new THREE.Color(2, 0.9, 0.3));
+    }
     const move = (list: Shot[]) => { for (const s of list) { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; } };
     move(this.shots); move(this.eshots);
     // Swept: does the shot's path this frame pass within reach of the target (fast shots can't skip past)?
@@ -771,20 +1280,37 @@ export class Game {
       const t = clamp(((x - ax) * bx + (y - ay) * by) / Math.max(1e-6, bx * bx + by * by), 0, 1);
       return Math.hypot(ax + bx * t - x, ay + by * t - y) < reach;
     };
-    if (this.boss) for (const s of this.shots) {
+    for (const s of this.shots) {
+      if (!this.boss) break;  // (destroyed by an earlier shot this frame)
       for (const p of this.boss.parts) {
+        if (!this.boss) break;
         if (!p.alive || s.life <= 0) continue;
-        if (near(s, this.boss.x + p.ox, this.boss.y + p.oy, p.r + s.r)) { this.hitPart(p, s.dmg, s.x, s.y); s.life = 0; }
+        if (s.hitRefs?.has(p)) continue;
+        if (near(s, this.boss.x + p.ox, this.boss.y + p.oy, p.r + s.r)) {
+          if (s.kind === "lava") { this.lavaBurst(s); continue; }
+          this.hitPart(p, s.dmg, s.x, s.y);
+          this.shotSpent(s, p);
+        }
       }
     }
     for (const s of this.shots) {
       if (s.life <= 0) continue;
       for (const e of this.enemies) {
         if (e.dying > 0) continue;
-        if (near(s, e.x, e.y, e.r + s.r)) { this.hitEnemy(e, s.dmg); s.life = 0; this.burst(s.x, s.y, new THREE.Color(0.5, 1.5, 2), 3, 250); break; }
+        if (s.hitRefs?.has(e)) continue;
+        if (near(s, e.x, e.y, e.r + s.r)) {
+          if (s.kind === "lava") { this.lavaBurst(s); break; }
+          this.hitEnemy(e, s.dmg);
+          this.burst(s.x, s.y, s.kind === "missile" ? new THREE.Color(2, 1.2, 0.4) : new THREE.Color(0.5, 1.5, 2), s.kind === "missile" ? 8 : 3, 250);
+          this.shotSpent(s, e);
+          if (s.life <= 0) break;
+        }
       }
     }
-    if (this.dead <= 0) for (const s of this.eshots) if (near(s, this.sx, this.sy, s.r + SHIP_HIT)) { this.hurt(s.dmg); s.life = 0; }
+    // Lava that reaches the end of its flight bursts where it is.
+    for (const s of this.shots) if (s.kind === "lava" && s.life <= 0) this.lavaBurst(s);
+    this.updateWeaponFx(dt);
+    if (this.dead <= 0) for (const s of this.eshots) if (near(s, this.sx, this.sy, s.r + this.hitR)) { this.hurt(s.dmg); s.life = 0; }
     const alive = (s: Shot) => s.life > 0 && Math.abs(s.x) < HALF_W + 50 && Math.abs(s.y) < HALF_H + 100;
     this.shots = this.shots.filter(alive);
     this.eshots = this.eshots.filter(alive);
@@ -805,6 +1331,50 @@ export class Game {
     };
     draw(this.shotMesh, this.shots, 2.6);
     draw(this.eshotMesh, this.eshots, 1);
+  }
+
+  /** A shot hit something: a missile with blast bursts; a piercing shot carries on (once per enemy). */
+  private shotSpent(s: Shot, what: object) {
+    if (s.blast) { this.blast(s.x, s.y, s.blast, s.dmg * 0.5, true); this.burst(s.x, s.y, new THREE.Color(2.4, 1.2, 0.3), 12, s.blast * 4); }
+    if (s.pierce && s.pierce > 0) { s.pierce--; (s.hitRefs ??= new Set()).add(what); return; }
+    s.life = 0;
+  }
+
+  // --- Coins ---
+  /** Scatter coins worth `total` from a destroyed enemy (5s and 25s). */
+  private dropCoins(x: number, y: number, total: number) {
+    if (this.demo) return;
+    while (total > 0 && this.coinDrops.length < MAX_COINS) {
+      const v = total >= 25 ? 25 : 5;
+      total -= v;
+      const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 160;
+      this.coinDrops.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 40, v, age: 0 });
+    }
+  }
+
+  /** Coins drift down and away; close to the ship they're pulled in and collected. */
+  private updateCoins(dt: number) {
+    const reach = 170;
+    for (const c of this.coinDrops) {
+      c.age += dt;
+      const dx = this.sx - c.x, dy = this.sy - c.y, d = Math.hypot(dx, dy) || 1;
+      if (this.dead <= 0 && d < reach) { const sp = 500 + 900 * (1 - d / reach); c.vx = (dx / d) * sp; c.vy = (dy / d) * sp; }
+      else { c.vx *= 1 - Math.min(1, dt * 1.5); c.vy += (-150 - c.vy) * (1 - Math.exp(-dt * 1.2)); }
+      c.x += c.vx * dt; c.y += c.vy * dt;
+      if (this.dead <= 0 && d < this.ramR + 16) { this.coins += c.v; c.age = -1; sfx("coin", c.x / HALF_W, c.v > 5 ? 0.5 : 0.3, c.v > 5 ? 0.8 : 1); }
+    }
+    this.coinDrops = this.coinDrops.filter((c) => c.age >= 0 && c.y > -HALF_H - 40 && Math.abs(c.x) < HALF_W + 40);
+    const n = this.coinDrops.length;
+    for (let i = 0; i < n; i++) {
+      const c = this.coinDrops[i], s = c.v > 5 ? 15 : 9;
+      this.dummy.position.set(c.x, c.y, 4);
+      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.scale.set(s * Math.max(0.2, Math.abs(Math.cos(c.age * 5))), s * 1.3, 1);
+      this.dummy.updateMatrix();
+      this.coinMesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.coinMesh.count = n;
+    this.coinMesh.instanceMatrix.needsUpdate = true;
   }
 
   // --- Effects ---

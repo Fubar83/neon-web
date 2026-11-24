@@ -56,9 +56,9 @@ export function setRoom(decay: number, bright: number) {
 // ---------------------------------------------------------------------------------------
 // Sound effects
 
-export type Sfx = "playerShot" | "enemyShot" | "hit" | "boomSmall" | "boomBig" | "powerUp" | "hurt" | "shield" | "warning" | "whoosh" | "menuMove" | "menuSelect" | "laser" | "lightning";
+export type Sfx = "playerShot" | "enemyShot" | "hit" | "boomSmall" | "boomBig" | "powerUp" | "hurt" | "shield" | "warning" | "whoosh" | "menuMove" | "menuSelect" | "laser" | "lightning" | "missile" | "shock" | "lava" | "coin";
 
-const minGap: Partial<Record<Sfx, number>> = { playerShot: 0.07, enemyShot: 0.06, hit: 0.05, boomSmall: 0.04, boomBig: 0.15, laser: 0.12, lightning: 0.08 };
+const minGap: Partial<Record<Sfx, number>> = { playerShot: 0.07, enemyShot: 0.06, hit: 0.05, boomSmall: 0.04, boomBig: 0.15, laser: 0.12, lightning: 0.08, missile: 0.08, shock: 0.1, lava: 0.1, coin: 0.035 };
 const last: Partial<Record<Sfx, number>> = {};
 
 /** Plays a sound effect; X (-1 left .. 1 right) pans it to where it happens. */
@@ -108,6 +108,10 @@ export function sfx(name: Sfx, x = 0, volume = 1, pitch = 1) {
     case "menuMove": osc("square", 1100, 1000, 0.045, 0.08); break;
     case "menuSelect": osc("square", 500, 2000, 0.3, 0.12); osc("sine", 1000, 4000, 0.3, 0.1); break;
     case "laser": osc("sawtooth", 180, 170, 0.3, 0.15); osc("sawtooth", 183, 172, 0.3, 0.15); break;
+    case "missile": noise("bandpass", 900, 3200, 0.2, 0.3, 1.5); osc("sine", 500, 1500, 0.15, 0.06); break;
+    case "coin": osc("sine", 1800, 1900, 0.06, 0.12); osc("sine", 2700, 2800, 0.12, 0.08); break;
+    case "shock": osc("sine", 240, 60, 0.4, 0.35); noise("lowpass", 2200, 180, 0.35, 0.35); break;
+    case "lava": osc("square", 130, 55, 0.28, 0.18); noise("lowpass", 1400, 250, 0.3, 0.45); break;
     case "lightning": noise("highpass", 2000, 6000, 0.28, 0.5); osc("sine", 2400, 1700, 0.25, 0.08); break;
   }
 }

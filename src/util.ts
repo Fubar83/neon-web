@@ -31,7 +31,7 @@ export class Input {
   private pressed = new Set<string>();
   constructor() {
     window.addEventListener("keydown", (e) => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(e.code)) e.preventDefault();
       if (!this.held.has(e.code)) this.pressed.add(e.code);
       this.held.add(e.code);
     });
@@ -56,5 +56,10 @@ export class Input {
   fire() {
     const pad = navigator.getGamepads?.()[0];
     return this.down("KeyJ", "KeyZ") || !!(pad && (pad.buttons[7]?.pressed || pad.buttons[0]?.pressed));
+  }
+  /** The secondary weapon: Space (or K / X; a gamepad's left trigger or B). */
+  fire2() {
+    const pad = navigator.getGamepads?.()[0];
+    return this.down("Space", "KeyK", "KeyX") || !!(pad && (pad.buttons[6]?.pressed || pad.buttons[1]?.pressed));
   }
 }
