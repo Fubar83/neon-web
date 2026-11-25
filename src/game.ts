@@ -293,6 +293,9 @@ export class Game {
     if (this.skill === 0) d *= 0.6; else if (this.skill === 2) d += 0.3;
     return Math.min(1.6, d);
   }
+  /** The first minutes are gentler, so you can get going: 1 at the start, down to 0 after 3 minutes
+   *  (half as much on Hard). Fewer waves and shots, slower shots, softer enemies, less damage. */
+  get ease() { return clamp(1 - this.dist / (this.level.speed * 60) / 3, 0, 1) * (this.skill === 2 ? 0.5 : 1); }
   get progress() { return clamp(this.dist / this.level.finish, 0, 1); }
   get shipX() { return this.sx; }
   debugShipY() { return this.sy; }
@@ -634,7 +637,7 @@ export class Game {
     if (this.dead > 0 || this.invuln > 0 || this.over) return;
     if (this.shieldHits > 0) { this.shieldHits--; this.invuln = 0.3; sfx("shield", this.sx / HALF_W); this.burst(this.sx, this.sy, new THREE.Color(0.4, 1.2, 2), 10, 260); return; }
     if (this.demo) { this.invuln = 0.4; sfx("hurt", this.sx / HALF_W, 0.5); this.burst(this.sx, this.sy, new THREE.Color(0.5, 0.9, 1.4), 12, 300); return; }  // the gallery ship can't die
-    const scale = (this.skill === 0 ? 0.6 : this.skill === 2 ? 1.3 : 1) * (this.level.gentle?.damage ?? 1);
+    const scale = (this.skill === 0 ? 0.6 : this.skill === 2 ? 1.3 : 1) * (this.level.gentle?.damage ?? 1) * (1 - 0.35 * this.ease);
     this.hull -= dmg * scale;
     this.lastHurt = this.runTime;
     this.invuln = 0.4;
@@ -654,7 +657,7 @@ export class Game {
     const d = this.difficulty;
     const r = this.waveRng;
     const skillWave = this.skill === 0 ? 1.35 : this.skill === 2 ? 0.85 : 1;
-    const gapSeconds = Math.max(1.2, 3.3 - 1.7 * Math.min(d, 1.2)) * skillWave * (this.level.gentle?.waves ?? 1);
+    const gapSeconds = Math.max(1.2, 3.3 - 1.7 * Math.min(d, 1.2)) * skillWave * (this.level.gentle?.waves ?? 1) * (1 + 0.5 * this.ease);
     this.nextWave = this.dist + gapSeconds * this.level.speed;
     // The kinds unlocked so far, the newest more likely.
     const tiers = this.level.tiers;
@@ -683,7 +686,7 @@ export class Game {
     this.currentGroup = this.waveIndex;
     this.groups.set(this.currentGroup, { alive: 0, value: 0, spoiled: false });
     switch (kind) {
-      case "drone": for (let i = 0; i < 4 + extra * 2; i++) add("drone", lane, top + i * 140); break;
+      case "drone": for (let i = 0; i < (this.ease > 0.5 ? 3 : 4) + extra * 2; i++) add("drone", lane, top + i * 140); break;
       case "fighter": add("fighter", -HALF_W + 120, top + 40, 1); add("fighter", HALF_W - 120, top + 150, -1); if (extra) add("fighter", 0, top + 260, r.chance(0.5) ? 1 : -1); break;
       case "burster": { const s = r.chance(0.5) ? 1 : -1; for (let i = 0; i < 3 + extra; i++) add("burster", clamp(lane + (i - 1) * 200, -HALF_W + 120, HALF_W - 120), top + i * 120, i % 2 ? -s : s); break; }
       case "splitter": add("splitter", lane - 130, top, 1); add("splitter", lane + 130, top + 160, -1); if (extra) add("splitter", lane, top + 300, 1); break;
@@ -709,8 +712,8 @@ export class Game {
       case "cog": color = 0xffa020; g.add(polylines([cog(16, 250, 0.86), circle(150, 48), polygon(6, 60)], true, M(color, 4, 2))); hp = 70; r = 238; score = 1500; fireMin = 2.4; fireMax = 3; spin = 0.4; break;
     }
     const d = this.difficulty;
-    const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.45, 1 - 0.35 * d);
-    if (kind !== "rock") hp *= 1 + 0.8 * d;
+    const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.45, 1 - 0.35 * d) * (1 + 0.8 * this.ease);
+    if (kind !== "rock") hp *= (1 + 0.8 * d) * (1 - 0.25 * this.ease);
     score = Math.round((score * (1 + 0.2 * this.minute)) / 10) * 10;  // worth more each danger level
     const e: Enemy = {
       kind, obj: g, mats, color: new THREE.Color(color), rng, x, y, sx: x, sy: y, age: 0, hp, maxHp: hp, r, score,
@@ -803,7 +806,7 @@ export class Game {
   }
 
   private fireShots(e: Enemy, dx: number, dy: number, n: number, spreadDeg: number, speed: number, color: THREE.Color, r: number) {
-    speed *= (this.level.gentle?.shotSpeed ?? 1) * (1 + 0.15 * Math.min(this.difficulty, 1.5));
+    speed *= (this.level.gentle?.shotSpeed ?? 1) * (1 + 0.15 * Math.min(this.difficulty, 1.5)) * (1 - 0.25 * this.ease);
     for (let i = 0; i < n; i++) {
       const a = ((i - (n - 1) / 2) * spreadDeg * Math.PI) / 180;
       const vx = dx * Math.cos(a) - dy * Math.sin(a), vy = dx * Math.sin(a) + dy * Math.cos(a);
