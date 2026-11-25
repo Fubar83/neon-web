@@ -4,6 +4,8 @@ The neon shooter running in a browser, front-end only: TypeScript, Three.js and 
 Like the Unreal version, nothing is loaded: every shape is generated neon line art, the music is
 synthesized live, and the sound effects are made from oscillators and noise.
 
+**Play it:** https://fubar83.github.io/neon-web/ (built and published by GitHub Actions on every push to main).
+
 ## Run
 
 ```
