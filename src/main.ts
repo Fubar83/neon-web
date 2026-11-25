@@ -69,6 +69,8 @@ let inMenu = true;
 let inGallery = false;
 let inHangar = false;
 let paused = false;
+/** The "leave this run?" question is showing (the game is frozen meanwhile). */
+let confirming = false;
 let galleryIndex = 0;
 let endTimer = 0;
 
@@ -92,7 +94,7 @@ const shop = new Panel($("hangar"), () => ({
   title: "PAUSED - SHOP", right: "COINS " + (game?.coins ?? 0).toLocaleString("en-US"),
   rows: game ? shopRows(game) : [],
   note: "Bought for this run only. Coins drop from destroyed enemies; fly close to collect them.",
-  help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="Escape">MENU</span> <span class="tapk" data-fs>FULL SCREEN</span> <span class="tapk" data-steer></span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P resume &nbsp; ESC menu`,
+  help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="LeaveRun">LEAVE RUN</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P or ESC resume (or tap the game)`,
 }));
 const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
 
@@ -161,6 +163,7 @@ function openMenu() {
   inGallery = false;
   inHangar = false;
   paused = false;
+  setConfirm(false);
   $("gallery").style.display = "none";
   $("hangar").style.display = "none";
   $("msg").style.right = "0";
@@ -186,6 +189,7 @@ function startLevel() {
   inGallery = false;
   inHangar = false;
   paused = false;
+  setConfirm(false);
   $("gallery").style.display = "none";
   $("hangar").style.display = "none";
   $("msg").style.right = "0";
@@ -200,7 +204,7 @@ function startLevel() {
   scene.add(game.root);
   playMusic(l.music, l.seed);
   // Phones: go full screen (and sideways, where the browser allows it) when a level is tapped.
-  if (touch.enabled) { enterFullscreen(); touch.requestTilt(); }
+  if (touch.enabled) enterFullscreen();
   endTimer = 0;
 }
 
@@ -228,6 +232,13 @@ function openHangar() {
 }
 
 /** Pause a run: the shop comes up. */
+function setConfirm(on: boolean) {
+  if (confirming === on) return;
+  confirming = on;
+  $("confirm").style.display = on ? "flex" : "none";
+  sfx("menuMove");
+}
+
 function setPaused(on: boolean) {
   paused = on;
   $("hangar").style.display = on ? "block" : "none";
@@ -325,7 +336,7 @@ function updateHud() {
   $("level").textContent = touch.enabled
     ? (game.tunnel ? `TUNNEL RUN   ${Math.round(game.tunnel.progress * 100)}%` : game.level.name.replace(/^\d+\s+/, "").toUpperCase())
     : game.tunnel
-    ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer, SHIFT brake)`
+    ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer)`
     : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (auto-fire, SPACE secondary, SHIFT precise, P shop, F full screen, ESC menu, M music, H hit boxes)`;
   const msg = game.messageT > 0 ? game.message : "";
   if (msg !== shownMsg) { shownMsg = msg; $("msg").textContent = msg; }
@@ -373,7 +384,19 @@ function tick(dt: number) {
     if (input.hit("Enter", "KeyJ", "NumpadEnter")) startLevel();
     world?.update(dt, 120);
   } else if (game) {
-    if (input.hit("Escape")) { openMenu(); return; }
+    // Leaving a run asks first; Esc in the shop just goes back to the game.
+    if (confirming) {
+      if (input.hit("Enter", "NumpadEnter", "KeyY", "LeaveYes")) { openMenu(); return; }
+      if (input.hit("Escape", "KeyN", "LeaveNo")) setConfirm(false);
+      updateHud(); touch.update("hidden", null, 0); render(); return;
+    }
+    if (input.hit("Escape")) {
+      if (paused) setPaused(false);
+      else if (game.done || game.over) openMenu();
+      else setConfirm(true);
+      return;
+    }
+    if (input.hit("LeaveRun")) { setConfirm(true); return; }
     if (input.hit("KeyP", "Tab") && !game.tunnel && !game.done && !game.over) setPaused(!paused);
     if (paused) { hangarKeys(); updateHud(); touch.update("hidden", null, 0); render(); return; }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
@@ -386,11 +409,10 @@ function tick(dt: number) {
     updateHud();
     if (game.done || game.over) { endTimer += dt; if (endTimer > 7) openMenu(); }
   }
-  // Touch controls: shown while playing (steer + brake in tunnels), hidden in menus and the pause.
+  // Touch controls: shown while playing (steering only in tunnels), hidden in menus and the pause.
   const playing = !!game && !inMenu && !inGallery && !inHangar && !paused && !game.done && !game.over;
   const sec = game?.secondary ?? null;
-  touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0, dt);
-  if (game) game.autoFire = !touch.manualFire;
+  touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0);
   render();
 }
 
@@ -445,6 +467,16 @@ const unlock = () => {
 window.addEventListener("keydown", unlock);
 window.addEventListener("pointerdown", unlock);
 
+// Tapping the game beside the shop closes it.
+$("stage").addEventListener("pointerdown", (e) => {
+  if (!paused || confirming || inMenu || inHangar || inGallery) return;
+  if ((e.target as HTMLElement).closest("#hangar, #confirm")) return;
+  setPaused(false);
+});
+// The phone locks or you switch away mid-run: open the shop (pause) so nothing happens meanwhile.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && game && !inMenu && !inHangar && !inGallery && !paused && !game.tunnel && !game.done && !game.over) setPaused(true);
+});
 setupFullscreen();
 if (touch.enabled && !fullscreenSupported) $("fshint").textContent = "Full screen on iPhone: Share, then Add to Home Screen, and start NEON from there.";
 resize();

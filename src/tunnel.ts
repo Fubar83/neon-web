@@ -10,7 +10,13 @@ import { sfx } from "./audio";
 
 const WALL = 600, SHIP_R = 420, STEP = 100, BLOCK_DEPTH = 300, BLOCK_IN = 380;
 const SHIP_HALF = 70 / SHIP_R;  // the ship's half-width as an angle
-const COLORS = [0x19e6ff, 0xff1acc, 0x73ff1a, 0xff8c0d];
+/** Wall colours per tunnel (cool tones, so the red obstacles stand out): rings, rings 2 / pattern, strips. */
+const PALETTES = [
+  [0x19e6ff, 0x3a6bff, 0x9a4dff],
+  [0xff3fd8, 0x8a3dff, 0x2fd8ff],
+  [0x2fffb0, 0x19c8ff, 0x6dff3a],
+  [0x8a6bff, 0xff5fc0, 0x3fb8ff],
+];
 
 interface Arc { s0: number; s1: number; mid: number; half: number }
 export type TunnelResult = "running" | "cleared" | "crashed";
@@ -28,10 +34,13 @@ export class TunnelRun {
   private arcs: Arc[] = [];
   private mats: LineMaterial[] = [];
   /** Solid faces on the blocks, so they read as walls and not just outlines. */
-  private fillMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.08, 0.04), transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  private fillMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.07, 0.03), transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
   private fillGeos: THREE.BufferGeometry[] = [];
+  /** The tube's solid wall (dark, opaque). */
+  private wallMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.012, 0.016, 0.035), side: THREE.DoubleSide });
+  private wallGeo: THREE.BufferGeometry | null = null;
   /** Each block with its own materials, so the near ones glow and the far ones stay faint. */
-  private blocks: { s: number; objs: THREE.Object3D[]; line: LineMaterial; fill: THREE.MeshBasicMaterial }[] = [];
+  private blocks: { s: number; objs: THREE.Object3D[]; line: LineMaterial; edge: LineMaterial; fill: THREE.MeshBasicMaterial }[] = [];
   private ship: THREE.Group;
   private shipMat: LineMaterial;
   private thetaVel = 0;
@@ -41,7 +50,7 @@ export class TunnelRun {
     const r = new Rng(seed);
     const ease = clamp(simplicity + (skill === 0 ? 0.35 : skill === 2 ? -0.25 : 0), 0, 1);
     this.buildPath(r, ease);
-    this.buildTube();
+    this.buildTube(r);
     this.firstObstacle = Math.min(length * 0.25, 36000);
     this.buildObstacles(r, ease);
     this.shipMat = lineMaterial(0xbff8ff, 3, 2.2);
@@ -55,7 +64,7 @@ export class TunnelRun {
     this.scene.add(this.ship);
   }
 
-  dispose() { this.mats.forEach(disposeMaterial); this.fillMat.dispose(); this.fillGeos.forEach((g) => g.dispose()); this.blocks.forEach((b) => b.fill.dispose()); }
+  dispose() { this.wallMat.dispose(); this.wallGeo?.dispose(); this.mats.forEach(disposeMaterial); this.fillMat.dispose(); this.fillGeos.forEach((g) => g.dispose()); this.blocks.forEach((b) => b.fill.dispose()); }
 
   // --- The path: a frame every STEP along it ---
   private buildPath(r: Rng, ease: number) {
@@ -69,13 +78,13 @@ export class TunnelRun {
         secStart = s;
         // Mostly long straights; a gentle bend now and then (and home toward the main direction).
         const dev = Math.acos(clamp(-f.z, -1, 1));
-        const bendNow = dev > 0.4 || r.next() > 0.55 + ease * 0.25;
+        const bendNow = dev > 0.4 || r.next() > 0.7 + ease * 0.2;  // few bends
         if (bendNow) {
-          secEnd = s + r.range(2800, 4800);
-          k = (1 - 0.45 * ease) / r.range(6500, 10000);
+          secEnd = s + r.range(3000, 5000);
+          k = (1 - 0.35 * ease) / r.range(13000, 20000);  // gentle: you see far ahead
           if (dev > 0.25) { const home = new THREE.Vector3(0, 0, -1).addScaledVector(f, f.z).normalize(); phi = Math.atan2(home.dot(u), home.dot(rt)); }
           else phi = r.range(0, Math.PI * 2);
-        } else { secEnd = s + r.range(4500, 9000); k = 0; }
+        } else { secEnd = s + r.range(7000, 12000); k = 0; }
       }
       const ramp = Math.min(smooth(secStart, secStart + 1000, s), 1 - smooth(secEnd - 1000, secEnd, s));
       const kk = k * ramp;
@@ -114,27 +123,69 @@ export class TunnelRun {
     return m;
   }
 
-  private buildTube() {
-    // Rings every 10 m and four strips along the walls, the colour changing every 60 m.
-    const perColour: number[][] = COLORS.map(() => []);
-    for (let a = -3000; a < this.length + 4000; a += 6000) {
-      const ci = Math.floor((a + 3000) / 6000) % COLORS.length;
-      const out = perColour[ci];
-      for (let s = Math.ceil(a / 1000) * 1000; s < a + 6000; s += 1000) {
-        for (let k = 0; k < 40; k++) {
-          const p0 = this.point(s, (k / 40) * Math.PI * 2, WALL), p1 = this.point(s, ((k + 1) / 40) * Math.PI * 2, WALL);
-          out.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
-        }
+  /** The tube: lots of thin, dim neon lines on a solid dark wall, in this tunnel's own colours and
+   *  pattern (so each tunnel looks different), kept low so the obstacles are what stands out. */
+  private buildTube(r: Rng) {
+    const pal = PALETTES[r.int(0, PALETTES.length - 1)];
+    const style = r.int(0, 2);
+    const lines: number[][] = pal.map(() => []);
+    const seg = (ci: number, s0: number, t0: number, s1: number, t1: number) => {
+      const p0 = this.point(s0, t0, WALL), p1 = this.point(s1, t1, WALL);
+      lines[ci].push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+    };
+    const S0 = -3000, S1 = this.length + 4000, TAU = Math.PI * 2;
+    // Rings every 5 m (every other one in the second colour).
+    for (let s = Math.ceil(S0 / 500) * 500; s < S1; s += 500) {
+      const ci = (s / 500) % 2 === 0 ? 0 : 1;
+      for (let k = 0; k < 40; k++) seg(ci, s, (k / 40) * TAU, s, ((k + 1) / 40) * TAU);
+    }
+    // Twelve strips along the walls.
+    for (let j = 0; j < 12; j++) {
+      const th = ((j + 0.5) / 12) * TAU;
+      for (let s = S0; s < S1; s += 400) seg(2, s, th, s + 400, th);
+    }
+    // This tunnel's pattern.
+    if (style === 0) {
+      // Zig-zag bands between the strips, every 30 m.
+      for (let s = S0; s < S1; s += 3000) for (let j = 0; j < 12; j++) {
+        const t0 = ((j + 0.5) / 12) * TAU, t1 = ((j + 1.5) / 12) * TAU;
+        seg(1, s, t0, s + 250, t1); seg(1, s + 250, t1, s + 500, t0);
       }
-      for (let j = 0; j < 4; j++) {
-        const th = (j + 0.5) * Math.PI * 0.5;
-        for (let s = a; s < a + 6000; s += 300) {
-          const p0 = this.point(s, th, WALL), p1 = this.point(s + 300, th, WALL);
-          out.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
-        }
+    } else if (style === 1) {
+      // Six helix lines winding along the tube.
+      for (let j = 0; j < 6; j++) for (let s = S0; s < S1; s += 300) {
+        const t0 = (j / 6) * TAU + s / 4000, t1 = (j / 6) * TAU + (s + 300) / 4000;
+        seg(0, s, t0, s + 300, t1);
+      }
+    } else {
+      // Dashed double rings with ladder rungs, every 20 m.
+      for (let s = S0; s < S1; s += 2000) for (let k = 0; k < 40; k += 2) {
+        seg(1, s, (k / 40) * TAU, s, ((k + 1) / 40) * TAU);
+        seg(1, s + 150, (k / 40) * TAU, s + 150, ((k + 1) / 40) * TAU);
+        seg(0, s, (k / 40) * TAU, s + 150, (k / 40) * TAU);
       }
     }
-    perColour.forEach((pairs, i) => { if (pairs.length) { const m = lineMaterial(COLORS[i], 2, 0.35); this.mats.push(m); this.scene.add(segments(pairs, m)); } });  // dim: the blocks are what matters
+    // A solid dark wall just behind the lines, so you can't see through the tube (or round a bend).
+    {
+      const N = 32, STEP_S = 500, pos: number[] = [], idx: number[] = [];
+      let rings = 0;
+      for (let s = S0; s <= S1; s += STEP_S, rings++) {
+        for (let k = 0; k < N; k++) { const p = this.point(s, (k / N) * TAU, WALL + 12); pos.push(p.x, p.y, p.z); }
+      }
+      for (let i = 0; i < rings - 1; i++) for (let k = 0; k < N; k++) {
+        const a = i * N + k, b = i * N + ((k + 1) % N), c = a + N, d = b + N;
+        idx.push(a, b, d, a, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setIndex(idx);
+      this.wallGeo = geo;
+      const wall = new THREE.Mesh(geo, this.wallMat);
+      wall.renderOrder = -2;
+      this.scene.add(wall);
+    }
+    // Dim and thin, below the glow threshold: plenty of neon, little light.
+    lines.forEach((pairs, i) => { if (pairs.length) { const m = lineMaterial(pal[i], 1.6, i === 2 ? 0.16 : 0.22); this.mats.push(m); this.scene.add(segments(pairs, m)); } });
   }
 
   // --- Obstacles ---
@@ -147,8 +198,9 @@ export class TunnelRun {
       return pts;
     };
     const f = loop(s - BLOCK_DEPTH / 2), b = loop(s + BLOCK_DEPTH / 2);
-    const line = lineMaterial(0xff1408, 4, 3);
-    this.mats.push(line);
+    const line = lineMaterial(0xff2a10, 6, 3);
+    const edge = lineMaterial(0xffe0a0, 3, 2.5);  // a white-hot rim on the face you fly at
+    this.mats.push(line, edge);
     const fill = this.fillMat.clone();
     const objs: THREE.Object3D[] = [polylines([f, b], true, line)];
     const pairs: number[] = [];
@@ -156,6 +208,7 @@ export class TunnelRun {
     // An X across the face you approach: "solid, steer around".
     pairs.push(f[0].x, f[0].y, f[0].z, f[21].x, f[21].y, f[21].z, f[10].x, f[10].y, f[10].z, f[11].x, f[11].y, f[11].z);
     objs.push(segments(pairs, line));
+    objs.push(polylines([f], true, edge));
     // Filled faces: the face you fly at, and the inner surface along the block.
     const pos: number[] = [];
     const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, a.x, a.y, a.z, c.x, c.y, c.z, d.x, d.y, d.z);
@@ -170,21 +223,22 @@ export class TunnelRun {
     mesh.renderOrder = -1;
     objs.push(mesh);
     for (const o of objs) { o.visible = false; this.scene.add(o); }
-    this.blocks.push({ s, objs, line, fill });
+    this.blocks.push({ s, objs, line, edge, fill });
   }
 
   /** Near blocks glow and pulse; far ones are faint; ones well behind or far ahead aren't drawn. */
   private shadeBlocks() {
-    const pulse = 3 + 2 * Math.sin(this.time * 7);
+    const pulse = 5 + 2 * Math.sin(this.time * 7);
     for (const b of this.blocks) {
       const d = b.s - this.s;
       const show = d > -700 && d < 10000;
       if (b.objs[0].visible !== show) for (const o of b.objs) o.visible = show;
       if (!show) continue;
       const near = 1 - clamp((d - 1500) / 7000, 0, 1);  // 1 within 1500 ahead, 0 at 8500
-      const k = 0.12 + 0.88 * near * near;
-      b.line.color.setRGB(pulse * k, 0.2 * k, 0.1 * k);
-      b.fill.opacity = 0.08 + 0.5 * near * near;
+      const k = 0.3 + 0.7 * near * near;  // even far ones stand out from the dim walls
+      b.line.color.setRGB(pulse * k, 0.35 * k, 0.1 * k);
+      b.edge.color.setRGB(2.2 * k, 1.7 * k, 1 * k);
+      b.fill.opacity = 0.2 + 0.5 * near * near;
     }
   }
 
@@ -229,13 +283,15 @@ export class TunnelRun {
     const maxSpeed = 9500, steerRate = 2.8;
     let s = this.firstObstacle, safe = 0;
     let left = 0, kind = 0, seed = 1, index = 0, spacing = 4000, step = 0, zig = false;
-    const nearBend = (at: number) => this.bendAround(at - 3500, at + 800) > 1 / 16000;
+    const nearBend = (at: number) => this.bendAround(at - 3500, at + 800) > 1 / 40000;
     while (s < this.length - 2500) {
       const T = clamp((s - this.firstObstacle) / Math.max(1, this.length - this.firstObstacle), 0, 1);
       if (nearBend(s)) { s += 500; left = 0; continue; }
       if (left <= 0) {
-        const maxKind = T < 0.2 ? 0 : T < 0.45 ? 1 : 3;
-        kind = r.int(0, ease >= 0.7 ? Math.min(1, maxKind) : maxKind);
+        // Kinds: 0 block, 1 pair, 2 ring gate, 3 slalom, 4 three blocks, 5 spiral, 6 pillars.
+        let pool = T < 0.15 ? [0, 6] : T < 0.35 ? [0, 1, 6, 4] : T < 0.6 ? [0, 1, 2, 4, 6, 5] : [0, 1, 2, 3, 4, 5, 6];
+        if (ease >= 0.7) pool = pool.filter((k) => k === 0 || k === 1 || k === 6);
+        kind = r.pick(pool);
         left = r.int(3, 6);
         spacing = (4200 + (2600 - 4200) * T) * (1 + 0.4 * ease) * (1.4 + (1 - 1.4) * clamp(T / 0.3, 0, 1));
         const reach = steerRate * (spacing / maxSpeed) * 0.55;
@@ -251,7 +307,10 @@ export class TunnelRun {
         case 0: { const half = pr.range(35, 60) * (Math.PI / 180); this.addBlock(s, safe + (pr.chance(0.5) ? 1 : -1) * pr.range(half + 0.45, Math.PI), half); break; }
         case 1: { const half = pr.range(30, 45) * (Math.PI / 180); const mid = safe + Math.PI / 2 + pr.range(-1, 1) * (Math.PI / 2 - half - 0.45); this.addBlock(s, mid, half); this.addBlock(s, mid + Math.PI, half); break; }
         case 2: { const gap = pr.range(80, 110) * (Math.PI / 180); this.addBlock(s, safe + Math.PI, (2 * Math.PI - gap) / 2); break; }
-        default: { const half = (50 * Math.PI) / 180, side = pr.chance(0.5) ? 1 : -1; this.addBlock(s, safe + side * (half + 0.5), half); this.addBlock(s + 1000, safe - side * (half + 0.5), half); s += 1000; break; }
+        case 3: { const half = (50 * Math.PI) / 180, side = pr.chance(0.5) ? 1 : -1; this.addBlock(s, safe + side * (half + 0.5), half); this.addBlock(s + 1000, safe - side * (half + 0.5), half); s += 1000; break; }
+        case 4: { const half = (30 * Math.PI) / 180; for (const m of [60, 180, 300]) this.addBlock(s, safe + (m * Math.PI) / 180, half); break; }  // three blocks, the gap at the safe line
+        case 5: { const dir = pr.chance(0.5) ? 1 : -1, half = (50 * Math.PI) / 180; for (let k = 0; k < 4; k++) this.addBlock(s + k * 700, safe + Math.PI + (k - 1.5) * dir * 0.9, half); s += 2100; break; }  // a spiral of blocks round the far side
+        default: { const half = (11 * Math.PI) / 180; for (let k = 0; k < 5; k++) this.addBlock(s, safe + ((50 + k * 65) * Math.PI) / 180, half); break; }  // a row of thin pillars
       }
       index++;
       s += spacing;
@@ -271,7 +330,7 @@ export class TunnelRun {
     this.time += dt;
     this.message = "";
     const base = Math.min(9500, 4200 + this.time * 260);
-    this.speed = base * (input.down("ShiftLeft", "ShiftRight") ? 0.6 : 1);
+    this.speed = base;  // no braking
     const prev = this.s;
     this.s += this.speed * dt;
     // Steering: the ship slides around the tube (the view rolls so it stays at the bottom).

@@ -167,8 +167,6 @@ export class Game {
   private coinDrops: Coin[] = [];
   private coinMesh: THREE.InstancedMesh;
   secCool = 0;
-  /** Primaries fire by themselves at enemies on screen (off when steering by tilt: there FIRE is a button). */
-  autoFire = true;
   addons: AddonKind[] = [];
   hullKind: HullKind = "falcon";
   maxHull = 100;
@@ -330,7 +328,7 @@ export class Game {
     if (this.done || this.over) { this.updateEffects(dt); return; }
     this.runTime += dt;
     if (this.tunnel) { this.updateTunnel(dt, input); return; }
-    this.dist += this.level.speed * dt;
+    if (!this.boss) this.dist += this.level.speed * dt;  // a boss fight holds the run still
     if (this.minute > this.minuteShown) {
       this.minuteShown = this.minute;
       this.say(`DANGER LEVEL ${this.minute + 1}`);
@@ -387,7 +385,7 @@ export class Game {
     this.quietHitT -= dt;
     // Primaries (all of them, together) on the fire key.
     // Primaries fire by themselves whenever an enemy is on screen (J / Z fires too, e.g. at nothing).
-    const firing = input.fire() || (this.autoFire && !this.demo && this.targets().length > 0);
+    const firing = input.fire() || (!this.demo && this.targets().length > 0);
     if (firing) for (const p of this.primaries) this.fireGun(dt, p);
     // Secondary: its own key, then a cooldown.
     if (input.fire2() && this.secondary && this.secCool <= 0) { this.fireGun(dt, this.secondary); this.secCool = this.cooldown(this.secondary); }
@@ -501,7 +499,7 @@ export class Game {
         this.laserGlow.scale.set(half * 1.6 * flick, len, 1);
         this.laserCore.scale.set(half * 0.4, len, 1);
         if (hit) {
-          for (const b of burned) b.t.hit((10 + 4 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
+          for (const b of burned) b.t.hit((8 + 3.2 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
           if (Math.random() < 0.6) this.spark(nx + sa * burned[0].d, ny + ca * burned[0].d, -sa * 200, -ca * 200, 0.25, new THREE.Color(2.4, 0.6, 1));
         }
         sfx("laser", pan, 0.35, 1.6);
@@ -548,7 +546,7 @@ export class Game {
       case "chain": {
         // A bolt to the nearest enemy ahead that jumps on to 1-3 more nearby (more and longer jumps per level), 25% weaker per jump.
         if ((this.fireTs.chain ?? 0) > 0) return;
-        this.fireTs.chain = 0.3 / (rate * 1.15 ** this.mod("chain", "rate"));
+        this.fireTs.chain = 0.36 / (rate * 1.15 ** this.mod("chain", "rate"));
         const all = this.targets().filter((t) => !t.shielded);
         let from: [number, number] = [nx, ny];
         const path: THREE.Vector3[] = [new THREE.Vector3(nx, ny, 4)];
@@ -557,7 +555,7 @@ export class Game {
         const rm = 1 + 0.25 * this.mod("chain", "reach");
         const cone = ((20 + 6 * this.mod("chain", "reach")) * Math.PI) / 180, first = (420 + 40 * lvl) * rm;
         const hits = 1 + (lvl <= 1 ? 1 : lvl <= 3 ? 2 : 3) + this.mod("chain", "jump"), reach = (160 + 40 * lvl) * rm;
-        const keep = 0.75 + 0.08 * this.mod("chain", "falloff"), cd = 5 * (1 + 0.2 * this.mod("chain", "dmg"));
+        const keep = 0.75 + 0.08 * this.mod("chain", "falloff"), cd = 3.4 * (1 + 0.2 * this.mod("chain", "dmg"));
         for (let j = 0; j < hits; j++) {
           let best: Target | null = null, bd = j === 0 ? first : reach;
           for (const t of all) {
@@ -904,11 +902,19 @@ export class Game {
 
   // --- Mini-bosses: parts in order ---
   private spawnBoss(kind: BossKind) {
+    // Only the boss: the enemies still around fly off (no score, no penalty) and their shots fade.
+    for (const e of [...this.enemies]) {
+      if (e.dying <= 0) this.burst(e.x, e.y, e.color.clone().multiplyScalar(0.8), 8, 200);
+      e.counted = true;
+      this.remove(e);
+    }
+    this.groups.clear();
+    this.eshots = [];
     const rng = new Rng(this.level.seed * 7777 + this.bossIndex * 31);
     const frame = new THREE.Group();
     const frameMat = lineMaterial(kind === "fortress" ? 0x8899ff : 0xff66cc, 3, 1.6);
     const parts: BossPart[] = [];
-    const d = this.difficulty, hpScale = (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
+    const d = this.difficulty, hpScale = (this.demo ? 1 : 5) * (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
     const addPart = (pk: BossPart["kind"], ox: number, oy: number, r: number, hp: number, stage: number) => {
       const color = pk === "turret" ? 0xffcc33 : pk === "engine" ? 0x33ccff : pk === "generator" ? 0x66ff66 : 0xff3355;
       const mat = lineMaterial(color, 3, 2.4);
@@ -1012,7 +1018,7 @@ export class Game {
     b.age += dt;
     this.bigFight = 1;
     // In, hover and sway; it leaves after a while (or when a tunnel comes).
-    if (b.age > 50 || (this.level.tunnels[this.tunnelIndex] && this.dist > this.level.tunnels[this.tunnelIndex].at - 150)) b.leaving = true;
+    if (b.age > 150 || (this.level.tunnels[this.tunnelIndex] && this.dist > this.level.tunnels[this.tunnelIndex].at - 150)) b.leaving = true;
     const targetY = b.leaving ? HALF_H + 500 : HALF_H - (this.demo ? 290 : 230);
     b.y += (targetY - b.y) * (1 - Math.exp(-dt * (b.leaving ? 1.2 : 0.8)));
     b.x = this.demo ? DEMO_X + Math.sin(b.age * 0.35) * 110 : Math.sin(b.age * 0.35) * 260;
@@ -1023,7 +1029,7 @@ export class Game {
     if (this.dead <= 0 && Math.abs(this.sx - b.x) < 230 && Math.abs(this.sy - b.y) < 200) this.hurt(35);
     if (b.y > HALF_H - 60 || b.leaving) return;
     // Fire from the live parts: turrets aim, engines and generators throw rings, the core spirals.
-    const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.5, 1 - 0.3 * this.difficulty);
+    const fireScale = 0.6 * (this.level.gentle?.fire ?? 1) * Math.max(0.5, 1 - 0.3 * this.difficulty);  // fires often
     for (const p of b.parts) {
       if (!p.alive) continue;
       p.fireT -= dt;
@@ -1032,14 +1038,14 @@ export class Game {
       const dx = this.sx - x, dy = this.sy - y, l = Math.hypot(dx, dy) || 1;
       const fake = { x, y, r: p.r } as Enemy;
       switch (p.kind) {
-        case "turret": p.fireT = 1.5 * fireScale; this.fireShots(fake, dx / l, dy / l, p.stage === b.stage ? 2 : 1, 10, 520, new THREE.Color(2, 1.6, 0.3), 9); break;
-        case "engine": p.fireT = 2.6 * fireScale; for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + (i - 2.5) * 0.35; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 330, new THREE.Color(0.4, 1.6, 2), 10); } break;
-        case "generator": p.fireT = 3 * fireScale; for (let i = 0; i < 8; i++) { const a = b.age + (i / 8) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 300, new THREE.Color(0.6, 2, 0.6), 11); } break;
+        case "turret": p.fireT = 1.5 * fireScale; this.fireShots(fake, dx / l, dy / l, p.stage === b.stage ? 3 : 1, 12, 560, new THREE.Color(2, 1.6, 0.3), 9); break;
+        case "engine": p.fireT = 2.6 * fireScale; for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + (i - 3.5) * 0.3; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 370, new THREE.Color(0.4, 1.6, 2), 10); } break;
+        case "generator": p.fireT = 3 * fireScale; for (let i = 0; i < 10; i++) { const a = b.age + (i / 10) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 330, new THREE.Color(0.6, 2, 0.6), 11); } break;
         case "core":
           if (p.stage > b.stage) { p.fireT = 1; break; }
           p.fireT = 0.16 * fireScale;
           b.spiral += 0.45;
-          for (let i = 0; i < 3; i++) { const a = b.spiral + (i / 3) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 330, new THREE.Color(2, 0.4, 0.6), 10); }
+          for (let i = 0; i < 4; i++) { const a = b.spiral + (i / 4) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 360, new THREE.Color(2, 0.4, 0.6), 10); }
           break;
       }
     }

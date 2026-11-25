@@ -35,6 +35,12 @@
       #bossbar { left: 50%; transform: translateX(-50%); top: 52px; width: 40%; text-align: center; font-size: 13px; color: #f8a; }
       #bossbg { height: 8px; background: #312; margin-top: 3px; }
       #bossfill { height: 100%; width: 100%; background: #f46; box-shadow: 0 0 8px #f46; }
+      #confirm { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); }
+      .cbox { background: rgba(6,8,20,0.97); border: 2px solid #3aa; padding: 22px 30px; text-align: center; box-shadow: 0 0 30px rgba(80,230,255,0.25); }
+      .ctitle { color: #ff6fd8; font-size: 22px; letter-spacing: 0.2em; margin-bottom: 8px; }
+      .ctext { color: #bcd; font-size: 13px; margin-bottom: 16px; }
+      .cleave { border-color: #f6a; color: #fbd; }
+      .chelp { color: #678; font-size: 11px; margin-top: 12px; }
       #radar { position: absolute; inset: 0; pointer-events: none; display: none; }
       #msg { left: 0; right: 0; top: 30%; text-align: center; font-size: 28px; font-weight: 600; color: #ffd860; opacity: 0; transition: opacity 0.3s; text-shadow: 0 0 14px rgba(255,200,60,0.7); }
       #menu { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); }
@@ -91,14 +97,11 @@
         background: conic-gradient(rgba(255,216,96,0.35) var(--ready, 0deg), rgba(40,30,10,0.5) 0); }
       #tsec.ready { box-shadow: 0 0 18px rgba(255,216,96,0.7); }
       #tsec.none { opacity: 0.35; }
-      #tfire { left: 26px; bottom: 26px; width: 104px; height: 104px; border-color: #5ef; color: #cff; background: rgba(20,60,90,0.45); }
-      #tsec.brake { border-color: #5ef; color: #cff; background: rgba(20,60,90,0.45); box-shadow: none; }
-      #trec { right: 30px; top: calc(42% + 74px); width: 64px; height: 44px; border-radius: 10px; font-size: 9px; line-height: 1.1; }
       #tshop { right: 30px; top: 42%; width: 64px; height: 64px; border-radius: 12px; }
       #tfs { right: 30px; top: calc(42% - 66px); width: 44px; height: 44px; border-radius: 10px; font-size: 20px; right: 40px; }
       #fsrow { margin-top: 10px; text-align: center; font-size: 12px; }
       #fshint { color: #8ab; font-size: 11px; margin-top: 6px; max-width: 420px; }
-      #tsec span, #tfire span, #tshop span, #trec span { pointer-events: none; padding: 4px; }
+      #tsec span, #tshop span { pointer-events: none; padding: 4px; }
       #rotate { display: none; position: fixed; inset: 0; z-index: 20; background: #000; color: #9ef; align-items: center; justify-content: center; text-align: center; font-size: 20px; letter-spacing: 0.1em; padding: 30px; }
       @media (orientation: portrait) { body.touch #rotate { display: flex; } }
       /* Small (phone) screens: a compact menu and wider panels */
@@ -148,6 +151,12 @@
       <div id="dist" class="hud"><div id="disttext"></div><div id="distbar"><div id="distfill"></div><div id="distbest"></div></div></div>
       <div id="bossbar" class="hud" style="visibility:hidden"><div id="bossname"></div><div id="bossbg"><div id="bossfill"></div></div></div>
       <div id="msg" class="hud"></div>
+      <div id="confirm" style="display:none"><div class="cbox">
+        <div class="ctitle">LEAVE THIS RUN?</div>
+        <div class="ctext">Your score so far won't count.</div>
+        <span class="tapk" data-key="LeaveNo">KEEP PLAYING</span> <span class="tapk cleave" data-key="LeaveYes">LEAVE</span>
+        <div class="chelp">ENTER leave &nbsp; ESC keep playing</div>
+      </div></div>
       <div id="flash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;"></div>
       <div id="gallery" style="display:none">
         <div class="gtitle">GALLERY <span id="gcount"></span></div>
@@ -165,7 +174,7 @@
         <div id="list"></div>
         <div id="skill"></div>
         <div id="skilldesc"></div>
-        <div id="fsrow"><span class="tapk" data-fs>FULL SCREEN</span> <span class="tapk" data-steer></span><div id="fshint"></div></div>
+        <div id="fsrow"><span class="tapk" data-fs>FULL SCREEN</span><div id="fshint"></div></div>
         <div id="help">UP / DOWN choose &nbsp; LEFT / RIGHT difficulty &nbsp; ENTER start &nbsp;&nbsp; in game: WASD / arrows move (fires by itself at enemies), SPACE secondary, SHIFT precise, P pause &amp; shop, F full screen, M music, ESC menu</div>
       </div>
     </div></div>

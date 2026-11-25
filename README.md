@@ -17,16 +17,15 @@ npm run build      # static files in dist/ (host anywhere)
 ## Play
 
 - Level select: Up/Down choose, Left/Right difficulty (Easy / Normal / Hard), Enter start.
-- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too), and the pulse gun, laser and wingmen lean toward the nearest enemy within about 10 degrees ahead (aim assist); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
+- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too), and the pulse gun, laser and wingmen lean toward the nearest enemy within about 10 degrees ahead (aim assist); Space fires the secondary; Shift slows you for precise dodging (not in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc leaves the run (it asks first).
 - A gamepad works too (left stick, right trigger / A to fire).
 
 ## On a phone or tablet
 
-Play sideways (landscape).
+Play sideways (landscape), with two thumbs.
 
-- **Tilt steering** (the default): tilt the phone like a marble board: lower the right edge to go right, the top edge (away from you) to go up. Level is how you hold the phone when a run starts or resumes; RE-CENTER sets it again. On iPhone, allow motion access when asked.
-- With tilt, both thumbs are free: **FIRE** (left, hold: the primary weapons) and **SPECIAL** (right: the secondary weapon; its ring fills as the cooldown runs). In tunnels the right button is **BRAKE**.
-- **Stick steering** (switch with STEERING in the menu or the pause screen; also used when the phone has no tilt sensor): touch anywhere on the left half and drag, a stick appears under your thumb; the primaries fire by themselves at enemies.
+- **Left thumb, steering**: touch anywhere on the left half and drag; a stick appears under your thumb. In tunnels it steers you round the tube.
+- **Right thumb, SPECIAL**: the secondary weapon (its ring fills as the cooldown runs). The primary weapons fire by themselves at enemies.
 - SHOP (pause) and full screen are small buttons on the right.
 - Menus, the hangar, the gallery and the shop are tapped; BACK, NEXT, RESUME and MENU buttons stand in for the keys.
 - On a computer, add `?touch` to the address to try the touch controls.
@@ -41,8 +40,8 @@ Play sideways (landscape).
 - **A gentle start**: the first 3 minutes ease in (half as much on Hard): at first a third fewer waves, smaller drone lines, enemies shooting about half as often with slower shots, 25% softer, and 35% less damage to you, fading to normal by minute 3.
 - **Points**: simple enemies are worth little, tough ones more (and everything more each danger level). Destroy every enemy of a wave (splitter fragments too) for a WAVE CLEARED bonus of half its value; let one escape and it is gone. Mini-boss parts, cleared tunnels and the finish line (plus 5,000 per life left) score too.
 - **Bonuses**: every 4,000 points you are given the next upgrade in a fixed order, the same in every level (+1 gun, shield, faster fire, +25% damage, repair, +1 gun, faster fire, +1 life, ...). The top bar shows which one is next. They are earned by fighting, not by flying past enemies.
-- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step. The tube walls are dim; blocks are solid red walls that glow brighter the closer they are (far ones stay faint), and a **gap radar** ring around the view shows the blocks coming up (red, brighter as they get close) and your ship (cyan dot), so you can line up with the gap early. Tunnel speed builds up to a top speed (hold Shift / BRAKE to slow down).
-- **Mini-bosses** (Fortress, Dreadnought) must be taken apart in order: turrets or engines first, then generators or turrets, then the core. Parts not yet up are shielded.
+- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step. The tube has solid walls you can't see through, covered in many thin, dim neon lines in its own colours and pattern, and few, gentle bends so you see far ahead. Obstacles stand out: thick red-hot blocks with a white-hot rim, brighter the closer they are, in many shapes (single blocks, pairs, ring gates, slaloms, three-blade gates, spirals, rows of pillars), mixed differently in every tunnel of a run (each run's tunnels are the same every time, so scores compare); and a **gap radar** ring around the view shows the blocks coming up (red, brighter as they get close) and your ship (cyan dot), so you can line up with the gap early. Tunnel speed builds up to a top speed, and there's no braking.
+- **Mini-bosses** (Fortress, Dreadnought) must be taken apart in order: turrets or engines first, then generators or turrets, then the core. Parts not yet up are shielded. They are tough (5x the health) and fire a lot; while one is here it's only the boss: the other enemies fly off, no waves come and the run holds still until it is destroyed (or leaves after 150 s).
 
 ## Levels
 
@@ -53,7 +52,7 @@ Play sideways (landscape).
 
 Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, mini-boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). They drift down slowly and last about 16 seconds (blinking near the end); fly within reach and they come to you.
 
-**Shop** (P or Tab pauses a run): spend the run's coins. Purchases last for that run only.
+**Shop** (P or Tab pauses a run; P, Esc or a tap on the game beside it goes back; it also opens by itself if you switch away or lock the phone): spend the run's coins. Purchases last for that run only. LEAVE RUN in the shop ends the run (it asks first).
 
 One row per weapon and add-on: its base price, then its own stackable upgrades, each a little dearer than the last (the shop shows how many of each you have, e.g. 2/5). Owned weapons and add-ons can be switched on and off.
 
