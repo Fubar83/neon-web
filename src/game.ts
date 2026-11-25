@@ -301,6 +301,8 @@ export class Game {
   /** The first minutes are gentler, so you can get going: 1 at the start, down to 0 after 3 minutes
    *  (half as much on Hard). Fewer waves and shots, slower shots, softer enemies, less damage. */
   get ease() { return clamp(1 - this.dist / (this.level.speed * 60) / 3, 0, 1) * (this.skill === 2 ? 0.5 : 1); }
+  /** Minutes flown so far (a minute's worth of distance at the level's speed), not rounded. */
+  get minutesIn() { return this.dist / (this.level.speed * 60); }
   get progress() { return clamp(this.dist / this.level.finish, 0, 1); }
   get shipX() { return this.sx; }
   debugShipY() { return this.sy; }
@@ -497,7 +499,7 @@ export class Game {
         this.laserGlow.scale.set(half * 1.6 * flick, len, 1);
         this.laserCore.scale.set(half * 0.4, len, 1);
         if (hit) {
-          for (const b of burned) b.t.hit((12 + 5 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
+          for (const b of burned) b.t.hit((10 + 4 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
           if (Math.random() < 0.6) this.spark(nx + sa * burned[0].d, ny + ca * burned[0].d, -sa * 200, -ca * 200, 0.25, new THREE.Color(2.4, 0.6, 1));
         }
         sfx("laser", pan, 0.35, 1.6);
@@ -749,7 +751,9 @@ export class Game {
     }
     const d = this.difficulty;
     const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.45, 1 - 0.35 * d) * (1 + 0.8 * this.ease);
-    if (kind !== "rock") hp *= (1 + 0.8 * d) * (1 - 0.25 * this.ease);
+    // Tougher the further you get: with the difficulty, plus 25% more health per minute flown (your
+    // weapons keep getting stronger too). Rocks stay easy.
+    if (kind !== "rock") hp *= (1 + 0.8 * d) * (1 + 0.25 * this.minutesIn) * (1 - 0.25 * this.ease);
     score = Math.round((score * (1 + 0.2 * this.minute)) / 10) * 10;  // worth more each danger level
     const e: Enemy = {
       kind, obj: g, mats, color: new THREE.Color(color), rng, x, y, sx: x, sy: y, age: 0, hp, maxHp: hp, r, score,
@@ -902,7 +906,7 @@ export class Game {
     const frame = new THREE.Group();
     const frameMat = lineMaterial(kind === "fortress" ? 0x8899ff : 0xff66cc, 3, 1.6);
     const parts: BossPart[] = [];
-    const d = this.difficulty, hpScale = (1 + 0.6 * d) * (this.level.gentle ? 0.5 : 1);
+    const d = this.difficulty, hpScale = (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
     const addPart = (pk: BossPart["kind"], ox: number, oy: number, r: number, hp: number, stage: number) => {
       const color = pk === "turret" ? 0xffcc33 : pk === "engine" ? 0x33ccff : pk === "generator" ? 0x66ff66 : 0xff3355;
       const mat = lineMaterial(color, 3, 2.4);
