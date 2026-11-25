@@ -17,7 +17,7 @@ npm run build      # static files in dist/ (host anywhere)
 ## Play
 
 - Level select: Up/Down choose, Left/Right difficulty (Easy / Normal / Hard), Enter start.
-- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too), and the pulse gun, laser and wingmen lean toward the nearest enemy within about 20 degrees ahead (aim assist); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
+- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too), and the pulse gun, laser and wingmen lean toward the nearest enemy within about 10 degrees ahead (aim assist); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
 - A gamepad works too (left stick, right trigger / A to fire).
 
 ## On a phone or tablet

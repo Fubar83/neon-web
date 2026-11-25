@@ -126,7 +126,7 @@ interface Coin { x: number; y: number; vx: number; vy: number; v: number; age: n
 const COIN_VALUE: Record<EnemyKind, number> = { drone: 5, rock: 5, splitter: 10, fighter: 15, burster: 20, blinker: 25, cog: 100 };
 const MAX_COINS = 300;
 /** Aim assist: shots and the laser lean toward an enemy at most this far off straight ahead. */
-const AIM_CONE = (20 * Math.PI) / 180;
+const AIM_CONE = (10 * Math.PI) / 180;
 /** Coins last this long (blinking for the last 3 s) unless they drift off the bottom first. */
 const COIN_LIFE = 16;
 interface Pool { obj: LineSegments2; x: number; y: number; r: number; life: number; dps: number }
@@ -390,7 +390,7 @@ export class Game {
     this.updateAddons(dt, firing);
   }
 
-  /** Aim assist: the angle (0 = straight up) toward the nearest enemy within ~20 degrees ahead, else 0. */
+  /** Aim assist: the angle (0 = straight up) toward the nearest enemy within ~10 degrees ahead, else 0. */
   private aimAngle(x: number, y: number): number {
     let best = 0, bestScore = Infinity;
     for (const t of this.targets()) {
