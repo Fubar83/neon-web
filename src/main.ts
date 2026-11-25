@@ -14,6 +14,8 @@ import { shopRows } from "./shop";
 import { Music } from "./music";
 import { initAudio, ctx, setRoom, sfx, musicBus } from "./audio";
 import { Input } from "./util";
+import { TouchControls } from "./touch";
+import { enterFullscreen, fullscreenSupported, setupFullscreen } from "./fullscreen";
 import { GALLERY, GALLERY_LEVEL, GALLERY_NOTE } from "./gallery";
 
 // --- Renderer: a fixed 16:9 frame, letterboxed, looking straight down at the play field ---
@@ -50,6 +52,13 @@ window.addEventListener("resize", resize);
 
 // --- State ---
 const input = new Input();
+const touch = new TouchControls(input);
+if (touch.enabled) document.body.classList.add("touch");
+// On-screen buttons in the menus and panels (BACK, NEXT, RESUME, ...) act as key taps.
+document.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-key]");
+  if (b?.dataset.key) input.tap(b.dataset.key);
+});
 let world: NeonWorld | null = null;
 let game: Game | null = null;
 let music: Music | null = null;
@@ -77,13 +86,13 @@ const hangar = new Panel($("hangar"), () => ({
   title: "HANGAR", right: "",
   rows: hangarRows(loadout, setLoadout),
   note: "Weapons, add-ons and their upgrades are bought during a run in the shop (P), with coins from destroyed enemies; they last for that run.",
-  help: "ARROWS move &nbsp; ENTER / SPACE pick &nbsp; ESC back",
+  help: `<span class="tapk" data-key="Escape">BACK</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE pick &nbsp; ESC back`,
 }));
 const shop = new Panel($("hangar"), () => ({
   title: "PAUSED - SHOP", right: "COINS " + (game?.coins ?? 0).toLocaleString("en-US"),
   rows: game ? shopRows(game) : [],
   note: "Bought for this run only. Coins drop from destroyed enemies; fly close to collect them.",
-  help: "ARROWS move &nbsp; ENTER / SPACE buy or switch &nbsp; P resume &nbsp; ESC menu",
+  help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="Escape">MENU</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P resume &nbsp; ESC menu`,
 }));
 const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
 
@@ -130,7 +139,7 @@ function renderMenu() {
   });
   const names = ["EASY", "NORMAL", "HARD"], colors = ["#5f8", "#ffd860", "#f54"];
   const desc = ["5 lives - less damage - calmer waves", "3 lives - the intended challenge", "2 lives - more damage - faster, tougher waves"];
-  $("skill").innerHTML = `&lt;&nbsp;&nbsp; ${names[skill]} &nbsp;&nbsp;&gt;`;
+  $("skill").innerHTML = `<span class="tapk" data-key="ArrowLeft">&lt;</span>&nbsp;&nbsp; ${names[skill]} &nbsp;&nbsp;<span class="tapk" data-key="ArrowRight">&gt;</span>`;
   ($("skill") as HTMLElement).style.color = colors[skill];
   $("skilldesc").textContent = desc[skill];
 }
@@ -190,6 +199,8 @@ function startLevel() {
   game = new Game(l, skill, loadout);
   scene.add(game.root);
   playMusic(l.music, l.seed);
+  // Phones: go full screen (and sideways, where the browser allows it) when a level is tapped.
+  if (touch.enabled) enterFullscreen();
   endTimer = 0;
 }
 
@@ -311,9 +322,11 @@ function updateHud() {
     saved = true;
     if (game.score > b) { localStorage.setItem(bestKey(game.level.id, skill), String(game.score)); game.message += "   NEW BEST!"; game.messageT = 7; }
   }
-  $("level").textContent = game.tunnel
+  $("level").textContent = touch.enabled
+    ? (game.tunnel ? `TUNNEL RUN   ${Math.round(game.tunnel.progress * 100)}%` : game.level.name.replace(/^\d+\s+/, "").toUpperCase())
+    : game.tunnel
     ? `TUNNEL RUN   ${Math.round(game.tunnel.speed * 0.036)} km/h   ${Math.round(game.tunnel.progress * 100)}%   (LEFT / RIGHT steer, SHIFT brake)`
-    : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (auto-fire, SPACE secondary, SHIFT precise, P shop, ESC menu, M music, H hit boxes)`;
+    : `${game.level.name.replace(/^\d+\s+/, "").toUpperCase()}   ${["EASY", "NORMAL", "HARD"][skill]}   (auto-fire, SPACE secondary, SHIFT precise, P shop, F full screen, ESC menu, M music, H hit boxes)`;
   const msg = game.messageT > 0 ? game.message : "";
   if (msg !== shownMsg) { shownMsg = msg; $("msg").textContent = msg; }
   ($("msg") as HTMLElement).style.opacity = game.messageT > 0 ? "1" : "0";
@@ -324,6 +337,13 @@ let lastT = performance.now();
 function frameLoop(now: number) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
+  tick(dt);
+  input.endFrame();
+  requestAnimationFrame(frameLoop);
+}
+
+/** One frame: input, menus or the game, HUD, touch controls, drawing. */
+function tick(dt: number) {
 
   if (input.hit("KeyM")) {
     musicMuted = !musicMuted;
@@ -331,13 +351,13 @@ function frameLoop(now: number) {
     if (ctx) musicBus.gain.value = musicMuted ? 0 : 0.5;
   }
   if (inHangar && game) {
-    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); return; }
     hangarKeys();
     game.update(dt, input);
     world?.update(dt, 120);
     updateGalleryMsg();
   } else if (inGallery && game) {
-    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); return; }
     if (input.hit("ArrowRight", "KeyD", "ArrowDown", "KeyS")) { sfx("menuMove"); showEntry(galleryIndex + 1); }
     if (input.hit("ArrowLeft", "KeyA", "ArrowUp", "KeyW")) { sfx("menuMove"); showEntry(galleryIndex - 1); }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
@@ -353,9 +373,9 @@ function frameLoop(now: number) {
     if (input.hit("Enter", "KeyJ", "NumpadEnter")) startLevel();
     world?.update(dt, 120);
   } else if (game) {
-    if (input.hit("Escape")) { openMenu(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (input.hit("Escape")) { openMenu(); return; }
     if (input.hit("KeyP", "Tab") && !game.tunnel && !game.done && !game.over) setPaused(!paused);
-    if (paused) { hangarKeys(); updateHud(); render(); input.endFrame(); requestAnimationFrame(frameLoop); return; }
+    if (paused) { hangarKeys(); updateHud(); touch.update("hidden", null, 0); render(); return; }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
     game.update(dt, input);
     if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
@@ -366,9 +386,11 @@ function frameLoop(now: number) {
     updateHud();
     if (game.done || game.over) { endTimer += dt; if (endTimer > 7) openMenu(); }
   }
+  // Touch controls: shown while playing (steer + brake in tunnels), hidden in menus and the pause.
+  const playing = !!game && !inMenu && !inGallery && !inHangar && !paused && !game.done && !game.over;
+  const sec = game?.secondary ?? null;
+  touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0);
   render();
-  input.endFrame();
-  requestAnimationFrame(frameLoop);
 }
 
 function updateGalleryMsg() {
@@ -409,6 +431,8 @@ const unlock = () => {
 window.addEventListener("keydown", unlock);
 window.addEventListener("pointerdown", unlock);
 
+setupFullscreen();
+if (touch.enabled && !fullscreenSupported) $("fshint").textContent = "Full screen on iPhone: Share, then Add to Home Screen, and start NEON from there.";
 resize();
 openMenu();
 requestAnimationFrame(frameLoop);
@@ -424,6 +448,8 @@ requestAnimationFrame(frameLoop);
   /** For tests: what P does in a run. */
   togglePause: () => { if (game && !inMenu && !inGallery && !inHangar) setPaused(!paused); },
   /** For tests: one frame with the real keyboard input. */
+  /** For tests: one whole frame (menus too) with the real input. */
+  tick: (dt = 1 / 60) => { tick(dt); input.endFrame(); },
   step: () => { game?.update(1 / 60, input); input.endFrame(); if (!inGallery) updateHud(); },
   /** For tests: run the gallery demo for some seconds, then draw once. */
   galleryRun: (seconds: number) => { for (let i = 0; i < Math.round(seconds * 60); i++) game?.update(1 / 60, input); updateGalleryMsg(); render(); },

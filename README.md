@@ -20,6 +20,18 @@ npm run build      # static files in dist/ (host anywhere)
 - In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
 - A gamepad works too (left stick, right trigger / A to fire).
 
+## On a phone or tablet
+
+Play sideways (landscape); it goes full screen when a level starts, where the browser allows it.
+
+- **Left half**: the steering area. Put your thumb down anywhere and drag: a stick appears under it.
+- **Right side**: the special button (the secondary weapon; its ring fills up as the cooldown runs), SLOW for precise dodging (BRAKE in tunnels) and SHOP (pause).
+- The primary weapons fire by themselves at enemies on screen.
+- Menus, the hangar, the gallery and the shop are tapped; BACK, NEXT, RESUME and MENU buttons stand in for the keys.
+- On a computer, add `?touch` to the address to try the touch controls.
+
+**Full screen**: the FULL SCREEN button (menu, pause, gallery, hangar; the small ⛶ button while playing on a phone) or F on a keyboard. Tapping a level on a phone goes full screen by itself. iPhones don't allow it for web pages: there use Share, then Add to Home Screen, and start NEON from the home screen (it then runs full screen and sideways; Android can install it the same way).
+
 ## How a run works
 
 - Each level is a run of about ten minutes to a finish line. Your result is your **score**; your best score per level and difficulty is saved and shown in the menu.

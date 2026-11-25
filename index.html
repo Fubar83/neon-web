@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
     <title>NEON</title>
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; color: #cfe; }
@@ -64,10 +71,68 @@
       #gabil li { margin-bottom: 5px; }
       #gnote { color: #8a9; font-size: 12px; font-style: italic; }
       .ghelp { position: absolute; bottom: 14px; left: 22px; right: 22px; color: #678; font-size: 11px; }
+      /* Buttons you can tap or click (also on desktop) */
+      .tapk { display: inline-block; padding: 3px 10px; margin: 0 3px; border: 1px solid #3aa; border-radius: 4px; color: #bff; cursor: pointer; pointer-events: auto; }
+      .tapk:active { background: rgba(80,230,255,0.25); }
+      /* Touch controls (phones / tablets) */
+      html, body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+      #menu, #hangar, #gallery { touch-action: pan-y; overflow-x: hidden; }
+      #touch { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+      #steer { position: absolute; left: 0; top: 0; bottom: 0; width: 48%; pointer-events: auto; }
+      .tbase { position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; border-radius: 50%; border: 2px solid rgba(80,230,255,0.35); background: rgba(80,230,255,0.06); }
+      #steer.on .tbase { border-color: rgba(80,230,255,0.7); background: rgba(80,230,255,0.12); }
+      .tknob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(150,240,255,0.35); box-shadow: 0 0 14px rgba(80,230,255,0.6); }
+      .thint { position: absolute; left: 22%; top: calc(72% + 74px); transform: translateX(-50%); color: rgba(150,220,255,0.45); font-size: 11px; letter-spacing: 0.2em; }
+      #steer.on .thint { display: none; }
+      .tbtn { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; pointer-events: auto; color: #dff; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-align: center; border: 2px solid rgba(80,230,255,0.5); background: rgba(10,30,50,0.45); }
+      .tbtn.on { background: rgba(80,230,255,0.35); }
+      #tsec { right: 26px; bottom: 26px; width: 104px; height: 104px; border-color: #ffd860; color: #ffe9a0;
+        background: conic-gradient(rgba(255,216,96,0.35) var(--ready, 0deg), rgba(40,30,10,0.5) 0); }
+      #tsec.ready { box-shadow: 0 0 18px rgba(255,216,96,0.7); }
+      #tsec.none { opacity: 0.35; }
+      #tslow { right: 150px; bottom: 34px; width: 72px; height: 72px; }
+      #tshop { right: 30px; top: 42%; width: 64px; height: 64px; border-radius: 12px; }
+      #tfs { right: 30px; top: calc(42% - 66px); width: 44px; height: 44px; border-radius: 10px; font-size: 20px; right: 40px; }
+      #fsrow { margin-top: 10px; text-align: center; font-size: 12px; }
+      #fshint { color: #8ab; font-size: 11px; margin-top: 6px; max-width: 420px; }
+      #tsec span, #tslow span, #tshop span { pointer-events: none; padding: 4px; }
+      #rotate { display: none; position: fixed; inset: 0; z-index: 20; background: #000; color: #9ef; align-items: center; justify-content: center; text-align: center; font-size: 20px; letter-spacing: 0.1em; padding: 30px; }
+      @media (orientation: portrait) { body.touch #rotate { display: flex; } }
+      /* Small (phone) screens: a compact menu and wider panels */
+      @media (max-height: 540px) {
+        #menu { justify-content: flex-start; overflow-y: auto; padding: 8px 0; }
+        #menu h1 { font-size: 30px; margin-bottom: 0; }
+        #menu .sub { margin-bottom: 6px; font-size: 12px; }
+        #list { min-width: 320px; padding: 2px 0; }
+        .item { padding: 5px 18px; font-size: 13px; }
+        .group { padding: 4px 14px 0; font-size: 10px; }
+        #skill { margin-top: 8px; font-size: 18px; }
+        #skilldesc { font-size: 11px; }
+        #help { display: none; }
+        #gallery, #hangar { width: 46%; padding: 10px 12px; font-size: 12px; }
+        .hhead { top: -10px; margin: -10px -12px 6px; padding: 10px 12px 6px; }
+        #gname { font-size: 18px; }
+        .hchip { font-size: 11px; padding: 4px 7px; }
+        .gtab { font-size: 10px; }
+        #gabil { margin: 8px 0; }
+        .ghelp { position: static; margin-top: 10px; }
+        .hud { font-size: 11px; }
+        #score { font-size: 16px; }
+        #dist { width: 42%; font-size: 9px; top: 6px; }
+        #hull { width: 150px; top: 8px; }
+        #weapons { top: 30px; max-width: 27%; font-size: 9px; }
+        #cdbar { top: auto; bottom: auto; width: 150px; top: 56px; }
+        #upgrades { top: 64px; font-size: 9px; }
+        #lives { top: 30px; } #coins { top: 46px; font-size: 11px; }
+        #bossbar { top: 34px; font-size: 10px; }
+        #msg { font-size: 18px; }
+      }
+      body.touch .tapk { padding: 6px 14px; margin: 3px; }
       #help { margin-top: 18px; color: #789; font-size: 12px; letter-spacing: 0.05em; }
     </style>
   </head>
   <body>
+    <div id="rotate">TURN YOUR PHONE SIDEWAYS<br />TO PLAY NEON</div>
     <div id="stage"><div id="frame">
       <div id="score" class="hud">SCORE 0000000</div>
       <div id="lives" class="hud"></div>
@@ -88,7 +153,7 @@
         <div id="gstats"></div>
         <ul id="gabil"></ul>
         <div id="gnote"></div>
-        <div class="ghelp">LEFT / RIGHT browse &nbsp; H hit circles &nbsp; ESC back</div>
+        <div class="ghelp"><span class="tapk" data-key="ArrowLeft">&lsaquo; PREV</span> <span class="tapk" data-key="ArrowRight">NEXT &rsaquo;</span> <span class="tapk" data-key="KeyH">HIT CIRCLES</span> <span class="tapk" data-key="Escape">BACK</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; (or LEFT / RIGHT, H, ESC)</div>
       </div>
       <div id="hangar" style="display:none"></div>
       <div id="menu">
@@ -97,7 +162,8 @@
         <div id="list"></div>
         <div id="skill"></div>
         <div id="skilldesc"></div>
-        <div id="help">UP / DOWN choose &nbsp; LEFT / RIGHT difficulty &nbsp; ENTER start &nbsp;&nbsp; in game: WASD / arrows move (fires by itself at enemies), SPACE secondary, SHIFT precise, P pause &amp; shop, M music, ESC menu</div>
+        <div id="fsrow"><span class="tapk" data-fs>FULL SCREEN</span><div id="fshint"></div></div>
+        <div id="help">UP / DOWN choose &nbsp; LEFT / RIGHT difficulty &nbsp; ENTER start &nbsp;&nbsp; in game: WASD / arrows move (fires by itself at enemies), SPACE secondary, SHIFT precise, P pause &amp; shop, F full screen, M music, ESC menu</div>
       </div>
     </div></div>
     <script type="module" src="/src/main.ts"></script>

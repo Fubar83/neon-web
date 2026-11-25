@@ -25,7 +25,7 @@ export function hashString(s: string): number {
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Keyboard state: held keys and keys pressed this frame. */
+/** Keyboard state (held keys, keys pressed this frame), plus touch: an on-screen stick and buttons act as keys. */
 export class Input {
   private held = new Set<string>();
   private pressed = new Set<string>();
@@ -38,6 +38,12 @@ export class Input {
     window.addEventListener("keyup", (e) => this.held.delete(e.code));
     window.addEventListener("blur", () => this.held.clear());
   }
+  /** The touch stick (-1..1 each way), or null when not touched. */
+  stick: { x: number; y: number } | null = null;
+  /** Touch buttons: hold a key down, let it go, or tap it for one frame. */
+  press(code: string) { if (!this.held.has(code)) this.pressed.add(code); this.held.add(code); }
+  release(code: string) { this.held.delete(code); }
+  tap(code: string) { this.pressed.add(code); }
   down(...codes: string[]) { return codes.some((c) => this.held.has(c)); }
   hit(...codes: string[]) { return codes.some((c) => this.pressed.has(c)); }
   endFrame() { this.pressed.clear(); }
@@ -50,6 +56,7 @@ export class Input {
       if (Math.abs(pad.axes[0]) > 0.2) x = pad.axes[0];
       if (Math.abs(pad.axes[1]) > 0.2) y = -pad.axes[1];
     }
+    if (this.stick) { x = this.stick.x; y = this.stick.y; }
     const l = Math.hypot(x, y);
     return l > 1 ? { x: x / l, y: y / l } : { x, y };
   }

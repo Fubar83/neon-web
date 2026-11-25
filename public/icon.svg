@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- NEON app icon: the Falcon ship outline in glowing cyan on black (our own drawing). -->
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="b" />
+      <feMerge><feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#05060f" />
+  <g fill="none" stroke-linejoin="round" filter="url(#glow)" transform="translate(256 272) scale(4.2 -4.2)">
+    <polygon points="0,46 12,10 40,-18 40,-28 12,-18 8,-30 -8,-30 -12,-18 -40,-28 -40,-18 -12,10" stroke="#bff8ff" stroke-width="3" />
+    <polygon points="0,28 5,10 0,4 -5,10" stroke="#ff4fd0" stroke-width="2.5" />
+    <circle cx="0" cy="-38" r="5" stroke="#ffb040" stroke-width="2.5" />
+  </g>
+</svg>
