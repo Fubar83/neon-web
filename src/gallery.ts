@@ -37,7 +37,7 @@ export const GALLERY: GalleryEntry[] = [
     abilities: [
       "PRIMARY PULSE GUN: fast straight shots; more guns per level, fanning out from 3",
       "PRIMARY LASER: a continuous beam that burns the first thing in its way; wider and hotter per level",
-      "PRIMARY CHAIN LASER: a bolt to the nearest enemy ahead that jumps on: 1 jump at level 1, 2 at levels 2-3, 3 at levels 4-5, longer jumps per level; each jump does 25% less damage",
+      "PRIMARY CHAIN LASER: a bolt to an enemy in a narrow cone ahead (20°, wider and longer with range upgrades) that jumps on: 1 jump at level 1, 2 at levels 2-3, 3 at levels 4-5, longer jumps per level; each jump does 25% less damage",
       "SECONDARY LAVA CANNON (2.2 s cooldown): a heavy lava ball that bursts over an area and leaves a burning pool",
       "SECONDARY SHOCKWAVE (2.6 s cooldown): a half ring rolls out ahead and hits everything it reaches once; full damage close by, a quarter at the edge",
       "ADD-ON HOMING MISSILES: every 1.4 s, whenever there is something to hit, a volley fans out and steers to targets; one missile per level",

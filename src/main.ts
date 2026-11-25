@@ -399,8 +399,21 @@ function updateGalleryMsg() {
   ($("msg") as HTMLElement).style.opacity = msg ? "1" : "0";
 }
 
+/** The tunnel's gap radar, drawn over the view while diving. */
+const radar = document.createElement("canvas");
+radar.id = "radar";
+frame.appendChild(radar);
+const radarCtx = radar.getContext("2d")!;
+
 /** Draws the play field, or the tunnel when diving; a white flash on the way in and out. */
 function render() {
+  const t = game?.tunnel;
+  radar.style.display = t ? "block" : "none";
+  if (t) {
+    const w = frame.clientWidth, h = frame.clientHeight;
+    if (radar.width !== w || radar.height !== h) { radar.width = w; radar.height = h; }
+    t.drawRadar(radarCtx, w, h);
+  }
   if (game?.tunnel) { renderPass.scene = game.tunnel.scene; renderPass.camera = game.tunnel.camera; }
   else { renderPass.scene = scene; renderPass.camera = camera; }
   ($("flash") as HTMLElement).style.opacity = String(game ? game.flash * 0.8 : 0);

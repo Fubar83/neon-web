@@ -36,7 +36,7 @@ export const HULL_ORDER: HullKind[] = ["falcon", "dart", "bulwark"];
 export const PRIMARY_INFO: Record<PrimaryKind, { desc: string; price: number }> = {
   pulse: { desc: "Fast straight shots; more guns per level.", price: 0 },
   laser: { desc: "A continuous beam that burns the first thing in its way.", price: 300 },
-  chain: { desc: "A bolt that jumps from enemy to enemy (1-3 jumps), 25% weaker per jump.", price: 500 },
+  chain: { desc: "A bolt to an enemy in a narrow cone ahead that jumps on to others (1-3 jumps), 25% weaker per jump.", price: 500 },
 };
 export const SECONDARY_INFO: Record<SecondaryKind, { desc: string; price: number }> = {
   lava: { desc: "SPACE: a heavy lava ball, area burst and a burning pool. 2.2 s cooldown.", price: 200 },

@@ -40,7 +40,7 @@ Play sideways (landscape); it goes full screen when a level starts, where the br
 - **A gentle start**: the first 3 minutes ease in (half as much on Hard): at first a third fewer waves, smaller drone lines, enemies shooting about half as often with slower shots, 25% softer, and 35% less damage to you, fading to normal by minute 3.
 - **Points**: simple enemies are worth little, tough ones more (and everything more each danger level). Destroy every enemy of a wave (splitter fragments too) for a WAVE CLEARED bonus of half its value; let one escape and it is gone. Mini-boss parts, cleared tunnels and the finish line (plus 5,000 per life left) score too.
 - **Bonuses**: every 4,000 points you are given the next upgrade in a fixed order, the same in every level (+1 gun, shield, faster fire, +25% damage, repair, +1 gun, faster fire, +1 life, ...). The top bar shows which one is next. They are earned by fighting, not by flying past enemies.
-- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step.
+- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step. The tube walls are dim; blocks are solid red walls that glow brighter the closer they are (far ones stay faint), and a **gap radar** ring around the view shows the blocks coming up (red, brighter as they get close) and your ship (cyan dot), so you can line up with the gap early. Tunnel speed builds up to a top speed (hold Shift / BRAKE to slow down).
 - **Mini-bosses** (Fortress, Dreadnought) must be taken apart in order: turrets or engines first, then generators or turrets, then the core. Parts not yet up are shielded.
 
 ## Levels
@@ -60,7 +60,7 @@ One row per weapon and add-on: its base price, then its own stackable upgrades, 
 |---|---|---|
 | Pulse gun | owned | +1 gun (3), damage +20% (5), fire rate +15% (4), wider fan +4° (3), pierce +1 (2) |
 | Laser | 300 | damage +20% (5), wider beam +30% (3), pierce +1 target (2) |
-| Chain laser | 500 | +1 jump (3), jump range +25% (3), damage +20% (5), less falloff (2), fire rate +15% (3) |
+| Chain laser | 500 | +1 jump (3), range +25% and a 6° wider cone (3), damage +20% (5), less falloff (2), fire rate +15% (3) |
 | Lava cannon | 200 | damage +25% (5), blast +20% (3), pool +50% (2), cooldown -15% (3), +1 side ball (2) |
 | Shockwave | 350 | damage +25% (5), range +20% (3), wider arc +45° (2, two make a full ring), cooldown -15% (3) |
 | Homing missiles | 300 | +1 missile (4), damage +25% (5), reload -15% (3), blast (2) |
@@ -78,7 +78,7 @@ One row per weapon and add-on: its base price, then its own stackable upgrades, 
 - **Primary**, up to 2, both fire by themselves whenever an enemy is on screen (with two, each does 70% damage):
   - **Pulse gun**: fast straight shots; more guns per level, fanning out from 3.
   - **Laser**: a continuous beam that burns the first thing in its way.
-  - **Chain laser**: a bolt that jumps from enemy to enemy: 1 jump at level 1, 2 at levels 2-3, 3 at levels 4-5, reaching further each level; every jump does 25% less damage.
+  - **Chain laser**: a bolt to an enemy in a narrow cone ahead (20°, not too far) that jumps from enemy to enemy: 1 jump at level 1, 2 at levels 2-3, 3 at levels 4-5, reaching further each level; every jump does 25% less damage.
 - **Secondary**, 1, on Space, then a cooldown:
   - **Lava cannon** (2.2 s): a heavy lava ball that bursts over an area and leaves a burning pool.
   - **Shockwave** (2.6 s): a half ring that rolls out ahead and hits everything it reaches; close targets take full damage, those at the edge a quarter.

@@ -26,7 +26,7 @@ export const MODS: Record<string, Mod[]> = {
   ],
   chain: [
     { id: "jump", name: "+1 JUMP", desc: "The bolt jumps to one more enemy.", max: 3, price: 200, step: 150 },
-    { id: "reach", name: "JUMP RANGE +25%", desc: "Each jump reaches 25% further.", max: 3, price: 120, step: 80 },
+    { id: "reach", name: "RANGE +25%", desc: "The bolt and its jumps reach 25% further, and it finds its first target in a 6 degrees wider cone.", max: 3, price: 120, step: 80 },
     { id: "dmg", name: "DAMAGE +20%", desc: "Every hit does 20% more damage.", max: 5, price: 150, step: 80 },
     { id: "falloff", name: "LESS FALLOFF", desc: "Each jump loses 8% less damage (25% → 17% → 9%).", max: 2, price: 200, step: 150 },
     { id: "rate", name: "FIRE RATE +15%", desc: "Bolts come 15% more often.", max: 3, price: 150, step: 100 },

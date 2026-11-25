@@ -549,13 +549,19 @@ export class Game {
         let from: [number, number] = [nx, ny];
         const path: THREE.Vector3[] = [new THREE.Vector3(nx, ny, 4)];
         const used = new Set<Target>();
-        const hits = 1 + (lvl <= 1 ? 1 : lvl <= 3 ? 2 : 3) + this.mod("chain", "jump"), reach = (200 + 50 * lvl) * (1 + 0.25 * this.mod("chain", "reach"));
+        // The first bolt only reaches enemies in a narrow cone ahead (wider and longer with range upgrades).
+        const rm = 1 + 0.25 * this.mod("chain", "reach");
+        const cone = ((20 + 6 * this.mod("chain", "reach")) * Math.PI) / 180, first = (420 + 40 * lvl) * rm;
+        const hits = 1 + (lvl <= 1 ? 1 : lvl <= 3 ? 2 : 3) + this.mod("chain", "jump"), reach = (160 + 40 * lvl) * rm;
         const keep = 0.75 + 0.08 * this.mod("chain", "falloff"), cd = 5 * (1 + 0.2 * this.mod("chain", "dmg"));
         for (let j = 0; j < hits; j++) {
-          let best: Target | null = null, bd = j === 0 ? 720 : reach;
+          let best: Target | null = null, bd = j === 0 ? first : reach;
           for (const t of all) {
             if (used.has(t)) continue;
-            if (j === 0 && t.y < ny - 40) continue;
+            if (j === 0) {
+              const dx = t.x - nx, dy = t.y - ny;
+              if (dy < 0 || Math.abs(Math.atan2(dx, dy)) - Math.atan2(t.r, Math.hypot(dx, dy)) > cone) continue;
+            }
             const d = Math.hypot(t.x - from[0], t.y - from[1]) - t.r;
             if (d < bd) { bd = d; best = t; }
           }

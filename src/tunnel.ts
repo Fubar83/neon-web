@@ -27,7 +27,11 @@ export class TunnelRun {
   private bend: number[] = [];
   private arcs: Arc[] = [];
   private mats: LineMaterial[] = [];
-  private obstacleMat: LineMaterial;
+  /** Solid faces on the blocks, so they read as walls and not just outlines. */
+  private fillMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.08, 0.04), transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  private fillGeos: THREE.BufferGeometry[] = [];
+  /** Each block with its own materials, so the near ones glow and the far ones stay faint. */
+  private blocks: { s: number; objs: THREE.Object3D[]; line: LineMaterial; fill: THREE.MeshBasicMaterial }[] = [];
   private ship: THREE.Group;
   private shipMat: LineMaterial;
   private thetaVel = 0;
@@ -38,8 +42,6 @@ export class TunnelRun {
     const ease = clamp(simplicity + (skill === 0 ? 0.35 : skill === 2 ? -0.25 : 0), 0, 1);
     this.buildPath(r, ease);
     this.buildTube();
-    this.obstacleMat = lineMaterial(0xff1408, 4, 3);
-    this.mats.push(this.obstacleMat);
     this.firstObstacle = Math.min(length * 0.25, 36000);
     this.buildObstacles(r, ease);
     this.shipMat = lineMaterial(0xbff8ff, 3, 2.2);
@@ -53,7 +55,7 @@ export class TunnelRun {
     this.scene.add(this.ship);
   }
 
-  dispose() { this.mats.forEach(disposeMaterial); }
+  dispose() { this.mats.forEach(disposeMaterial); this.fillMat.dispose(); this.fillGeos.forEach((g) => g.dispose()); this.blocks.forEach((b) => b.fill.dispose()); }
 
   // --- The path: a frame every STEP along it ---
   private buildPath(r: Rng, ease: number) {
@@ -132,7 +134,7 @@ export class TunnelRun {
         }
       }
     }
-    perColour.forEach((pairs, i) => { if (pairs.length) { const m = lineMaterial(COLORS[i], 3, 0.9); this.mats.push(m); this.scene.add(segments(pairs, m)); } });
+    perColour.forEach((pairs, i) => { if (pairs.length) { const m = lineMaterial(COLORS[i], 2, 0.35); this.mats.push(m); this.scene.add(segments(pairs, m)); } });  // dim: the blocks are what matters
   }
 
   // --- Obstacles ---
@@ -145,16 +147,86 @@ export class TunnelRun {
       return pts;
     };
     const f = loop(s - BLOCK_DEPTH / 2), b = loop(s + BLOCK_DEPTH / 2);
-    this.scene.add(polylines([f, b], true, this.obstacleMat));
+    const line = lineMaterial(0xff1408, 4, 3);
+    this.mats.push(line);
+    const fill = this.fillMat.clone();
+    const objs: THREE.Object3D[] = [polylines([f, b], true, line)];
     const pairs: number[] = [];
     for (const i of [0, 10, 11, 21]) pairs.push(f[i].x, f[i].y, f[i].z, b[i].x, b[i].y, b[i].z);
     // An X across the face you approach: "solid, steer around".
     pairs.push(f[0].x, f[0].y, f[0].z, f[21].x, f[21].y, f[21].z, f[10].x, f[10].y, f[10].z, f[11].x, f[11].y, f[11].z);
-    this.scene.add(segments(pairs, this.obstacleMat));
+    objs.push(segments(pairs, line));
+    // Filled faces: the face you fly at, and the inner surface along the block.
+    const pos: number[] = [];
+    const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, a.x, a.y, a.z, c.x, c.y, c.z, d.x, d.y, d.z);
+    for (let k = 0; k < 10; k++) {
+      quad(f[k], f[k + 1], f[20 - k], f[21 - k]);  // front: inner edge k..k+1 to the outer edge
+      quad(f[k], f[k + 1], b[k + 1], b[k]);        // the inner surface, front to back
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    this.fillGeos.push(geo);
+    const mesh = new THREE.Mesh(geo, fill);
+    mesh.renderOrder = -1;
+    objs.push(mesh);
+    for (const o of objs) { o.visible = false; this.scene.add(o); }
+    this.blocks.push({ s, objs, line, fill });
+  }
+
+  /** Near blocks glow and pulse; far ones are faint; ones well behind or far ahead aren't drawn. */
+  private shadeBlocks() {
+    const pulse = 3 + 2 * Math.sin(this.time * 7);
+    for (const b of this.blocks) {
+      const d = b.s - this.s;
+      const show = d > -700 && d < 10000;
+      if (b.objs[0].visible !== show) for (const o of b.objs) o.visible = show;
+      if (!show) continue;
+      const near = 1 - clamp((d - 1500) / 7000, 0, 1);  // 1 within 1500 ahead, 0 at 8500
+      const k = 0.12 + 0.88 * near * near;
+      b.line.color.setRGB(pulse * k, 0.2 * k, 0.1 * k);
+      b.fill.opacity = 0.08 + 0.5 * near * near;
+    }
+  }
+
+  /** The gap radar: a ring around the view with the blocks ahead drawn where they are around the tube
+   *  (red, brighter as they come closer) and the ship as a cyan mark, so you see early where to steer. */
+  drawRadar(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    ctx.clearRect(0, 0, w, h);
+    const range = 9000, R = Math.min(w, h) * 0.42, cx = w / 2, cy = h * 0.47;
+    const v = new THREE.Vector3();
+    const screenAngle = (s: number, th: number) => {
+      const c = v.copy(this.point(s, 0, 0)).project(this.camera), x0 = c.x, y0 = c.y;
+      const p = v.copy(this.point(s, th, WALL * 0.8)).project(this.camera);
+      return Math.atan2((p.y - y0) * h, (p.x - x0) * w);  // (projected y points up, like the ring's angles)
+    };
+    ctx.lineCap = "round";
+    ctx.lineWidth = Math.max(3, R * 0.04);
+    ctx.strokeStyle = "rgba(80,230,255,0.12)";
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    // Blocks ahead, farthest first so the nearest draw on top.
+    const ahead = this.arcs.filter((a) => a.s1 > this.s && a.s0 < this.s + range).sort((a, b) => b.s0 - a.s0);
+    for (const a of ahead) {
+      const near = 1 - Math.max(0, a.s0 - this.s) / range;
+      ctx.strokeStyle = `rgba(255,${Math.round(60 - 40 * near)},40,${0.2 + 0.8 * near * near})`;
+      ctx.lineWidth = Math.max(4, R * (0.05 + 0.07 * near));
+      ctx.beginPath();
+      const n = 10;
+      for (let k = 0; k <= n; k++) {
+        const ang = screenAngle(Math.max(a.s0, this.s + 400), a.mid - a.half + (2 * a.half * k) / n);
+        const x = cx + Math.cos(ang) * R, y = cy - Math.sin(ang) * R;
+        if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // The ship's place on the ring.
+    const sa = screenAngle(this.s + 400, this.theta);
+    const sx = cx + Math.cos(sa) * R, sy = cy - Math.sin(sa) * R;
+    ctx.fillStyle = "rgba(150,250,255,0.95)";
+    ctx.beginPath(); ctx.arc(sx, sy, Math.max(5, R * 0.05), 0, Math.PI * 2); ctx.fill();
   }
 
   private buildObstacles(r: Rng, ease: number) {
-    const maxSpeed = 12500, steerRate = 2.8;
+    const maxSpeed = 9500, steerRate = 2.8;
     let s = this.firstObstacle, safe = 0;
     let left = 0, kind = 0, seed = 1, index = 0, spacing = 4000, step = 0, zig = false;
     const nearBend = (at: number) => this.bendAround(at - 3500, at + 800) > 1 / 16000;
@@ -198,8 +270,8 @@ export class TunnelRun {
   update(dt: number, input: Input): TunnelResult {
     this.time += dt;
     this.message = "";
-    const base = Math.min(12500, 5000 + this.time * 380);
-    this.speed = base * (input.down("ShiftLeft", "ShiftRight") ? 0.7 : 1);
+    const base = Math.min(9500, 4200 + this.time * 260);
+    this.speed = base * (input.down("ShiftLeft", "ShiftRight") ? 0.6 : 1);
     const prev = this.s;
     this.s += this.speed * dt;
     // Steering: the ship slides around the tube (the view rolls so it stays at the bottom).
@@ -220,9 +292,9 @@ export class TunnelRun {
     this.camera.position.copy(this.point(this.s - 1000, this.theta, SHIP_R * 0.44));
     this.camera.up.copy(down).negate();
     this.camera.lookAt(this.point(this.s + 1600, this.theta, SHIP_R * 0.55));
-    this.camera.fov = 72 + clamp((this.speed - 5000) / 11000, 0, 1) * 24;
+    this.camera.fov = 72 + clamp((this.speed - 4200) / 8000, 0, 1) * 20;
     this.camera.updateProjectionMatrix();
-    this.obstacleMat.color.setRGB(3 + 2 * Math.sin(this.time * 7), 0.2, 0.1);
+    this.shadeBlocks();
     if (this.hits(prev, this.s, this.theta)) { sfx("boomBig", 0, 1.2); return "crashed"; }
     return this.s >= this.length ? "cleared" : "running";
   }
