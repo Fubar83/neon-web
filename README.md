@@ -17,7 +17,7 @@ npm run build      # static files in dist/ (host anywhere)
 ## Play
 
 - Level select: Up/Down choose, Left/Right difficulty (Easy / Normal / Hard), Enter start.
-- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
+- In a level: WASD or arrows move; the primary weapons fire by themselves whenever an enemy is on screen (J / Z fires too), and the pulse gun, laser and wingmen lean toward the nearest enemy within about 20 degrees ahead (aim assist); Space fires the secondary; Shift slows you for precise dodging (brakes in tunnels); P pauses and opens the shop; M music on/off, H hit circles, Esc back to the menu.
 - A gamepad works too (left stick, right trigger / A to fire).
 
 ## On a phone or tablet
@@ -50,7 +50,7 @@ Play sideways (landscape); it goes full screen when a level starts, where the br
 
 ## Coins, shop and hangar
 
-Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, mini-boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). Fly close and they come to you; missed ones drift away.
+Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, mini-boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). They drift down slowly and last about 16 seconds (blinking near the end); fly within reach and they come to you.
 
 **Shop** (P or Tab pauses a run): spend the run's coins. Purchases last for that run only.
 

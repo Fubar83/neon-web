@@ -125,6 +125,10 @@ interface Coin { x: number; y: number; vx: number; vy: number; v: number; age: n
 /** Coins dropped per enemy kind (splitter fragments drop 5). */
 const COIN_VALUE: Record<EnemyKind, number> = { drone: 5, rock: 5, splitter: 10, fighter: 15, burster: 20, blinker: 25, cog: 100 };
 const MAX_COINS = 300;
+/** Aim assist: shots and the laser lean toward an enemy at most this far off straight ahead. */
+const AIM_CONE = (20 * Math.PI) / 180;
+/** Coins last this long (blinking for the last 3 s) unless they drift off the bottom first. */
+const COIN_LIFE = 16;
 interface Pool { obj: LineSegments2; x: number; y: number; r: number; life: number; dps: number }
 
 export type Upgrade = "weapon" | "rapid" | "power" | "shield" | "repair" | "life";
@@ -179,6 +183,7 @@ export class Game {
   private pools: Pool[] = []; private poolMat: LineMaterial;
   private waves: Wave[] = [];
   private quietHitT = 0;
+  private laserAim = 0;
   private skill: number;
   private waveRng: Rng;
   private ship: THREE.Group; private shipMat: LineMaterial; private flame: THREE.Mesh;
@@ -385,6 +390,23 @@ export class Game {
     this.updateAddons(dt, firing);
   }
 
+  /** Aim assist: the angle (0 = straight up) toward the nearest enemy within ~20 degrees ahead, else 0. */
+  private aimAngle(x: number, y: number): number {
+    let best = 0, bestScore = Infinity;
+    for (const t of this.targets()) {
+      if (t.shielded) continue;
+      const dx = t.x - x, dy = t.y - y;
+      if (dy < 20 || dy > 1100) continue;
+      const a = Math.atan2(dx, dy);
+      const slack = Math.atan2(t.r, Math.hypot(dx, dy));  // big targets count from their edge
+      const off = Math.max(0, Math.abs(a) - slack);
+      if (off > AIM_CONE) continue;
+      const score = off * 600 + Math.hypot(dx, dy) * 0.3;  // prefer what's most in line, then nearest
+      if (score < bestScore) { bestScore = score; best = clamp(a, -AIM_CONE, AIM_CONE); }
+    }
+    return best;
+  }
+
   /** The secondary's cooldown, with its upgrades and fire rate. */
   cooldown(s: SecondaryKind) { return (COOLDOWN[s] * 0.85 ** this.mod(s, "cool")) / this.fireRate; }
 
@@ -421,8 +443,9 @@ export class Game {
       if (firing && this.wingT <= 0) {
         this.wingT = 0.2 / (this.fireRate * 1.2 ** this.mod("wingman", "rate"));
         const d = 0.6 * this.damage * (1 + 0.3 * this.mod("wingman", "dmg"));
-        this.shots.push({ x: this.wx, y: this.wy + 22, vx: 0, vy: 1800, r: 4.5, color: this.shotColor, dmg: d, life: 1 });
-        if (twin) this.shots.push({ x: this.wx2, y: this.wy + 22, vx: 0, vy: 1800, r: 4.5, color: this.shotColor, dmg: d, life: 1 });
+        const shoot = (x: number) => { const a = this.aimAngle(x, this.wy + 22); this.shots.push({ x, y: this.wy + 22, vx: Math.sin(a) * 1800, vy: Math.cos(a) * 1800, r: 4.5, color: this.shotColor, dmg: d, life: 1 }); };
+        shoot(this.wx);
+        if (twin) shoot(this.wx2);
       }
     } else { this.wx = this.sx; this.wx2 = this.sx; this.wy = this.sy; }
   }
@@ -440,35 +463,42 @@ export class Game {
         const guns = Math.min(8, lvl + this.mod("pulse", "guns"));
         const spread = (guns >= 3 ? 5 : 0) + (guns >= 2 ? 4 * this.mod("pulse", "spread") : 0);
         const d = dmg * (1 + 0.2 * this.mod("pulse", "dmg")), pierce = this.mod("pulse", "pierce");
+        const aim = this.aimAngle(nx, ny);  // aim assist: the volley leans toward the nearest enemy ahead
         for (let i = 0; i < guns; i++) {
           const off = i - (guns - 1) / 2;
-          const ang = off * spread * (Math.PI / 180);
+          const ang = aim + off * spread * (Math.PI / 180);
           this.shots.push({ x: nx + off * 14, y: ny, vx: Math.sin(ang) * 1900, vy: Math.cos(ang) * 1900, r: 6, color: this.shotColor, dmg: d, life: 1, pierce });
         }
         sfx("playerShot", pan, 0.6);
         return;
       }
       case "laser": {
-        // A continuous beam straight ahead: it stops at the first thing in its way and burns it
-        // (with pierce upgrades it burns through to the next ones too).
+        // A continuous beam ahead (leaning toward the nearest enemy, smoothly): it stops at the first thing
+        // in its way and burns it (with pierce upgrades it burns through to the next ones too).
+        this.laserAim += (this.aimAngle(nx, ny) - this.laserAim) * (1 - Math.exp(-dt * 12));
+        const a = this.laserAim, sa = Math.sin(a), ca = Math.cos(a);
         const half = (4 + 2.5 * lvl) * (1 + 0.3 * this.mod("laser", "width"));
-        const inBeam: { t: Target; y: number }[] = [];
+        const inBeam: { t: Target; d: number }[] = [];
         for (const t of this.targets()) {
-          if (t.y < ny - t.r || Math.abs(t.x - nx) > t.r + half) continue;
-          inBeam.push({ t, y: Math.max(ny, t.y - Math.sqrt(Math.max(0, (t.r + half) ** 2 - (t.x - nx) ** 2)) * 0.8) });
+          const rx = t.x - nx, ry = t.y - ny;
+          const along = rx * sa + ry * ca, across = rx * ca - ry * sa;  // in the beam's own frame
+          if (along < -t.r || Math.abs(across) > t.r + half) continue;
+          inBeam.push({ t, d: Math.max(0, along - Math.sqrt(Math.max(0, (t.r + half) ** 2 - across ** 2)) * 0.8) });
         }
-        inBeam.sort((a, b) => a.y - b.y);
+        inBeam.sort((p, q) => p.d - q.d);
         const burned = inBeam.slice(0, 1 + this.mod("laser", "pierce"));
-        const end = burned.length > this.mod("laser", "pierce") ? burned[burned.length - 1].y : HALF_H + 60;
+        const full = (HALF_H + 60 - ny) / Math.max(0.3, ca);
+        const len = burned.length > this.mod("laser", "pierce") ? burned[burned.length - 1].d : full;
         const hit = burned.length > 0;
-        const len = end - ny, flick = 0.85 + 0.3 * Math.random();
+        const flick = 0.85 + 0.3 * Math.random();
         this.laserBeam.visible = true;
         this.laserBeam.position.set(nx, ny, 3);
+        this.laserBeam.rotation.z = -a;
         this.laserGlow.scale.set(half * 1.6 * flick, len, 1);
         this.laserCore.scale.set(half * 0.4, len, 1);
         if (hit) {
           for (const b of burned) b.t.hit((12 + 5 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
-          if (Math.random() < 0.6) this.spark(nx, burned[0].y, 0, -200, 0.25, new THREE.Color(2.4, 0.6, 1));
+          if (Math.random() < 0.6) this.spark(nx + sa * burned[0].d, ny + ca * burned[0].d, -sa * 200, -ca * 200, 0.25, new THREE.Color(2.4, 0.6, 1));
         }
         sfx("laser", pan, 0.35, 1.6);
         return;
@@ -1350,26 +1380,27 @@ export class Game {
     while (total > 0 && this.coinDrops.length < MAX_COINS) {
       const v = total >= 25 ? 25 : 5;
       total -= v;
-      const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 160;
+      const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 110;
       this.coinDrops.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 40, v, age: 0 });
     }
   }
 
   /** Coins drift down and away; close to the ship they're pulled in and collected. */
   private updateCoins(dt: number) {
-    const reach = 170;
+    const reach = 240;
     for (const c of this.coinDrops) {
       c.age += dt;
       const dx = this.sx - c.x, dy = this.sy - c.y, d = Math.hypot(dx, dy) || 1;
       if (this.dead <= 0 && d < reach) { const sp = 500 + 900 * (1 - d / reach); c.vx = (dx / d) * sp; c.vy = (dy / d) * sp; }
-      else { c.vx *= 1 - Math.min(1, dt * 1.5); c.vy += (-150 - c.vy) * (1 - Math.exp(-dt * 1.2)); }
+      else { c.vx *= 1 - Math.min(1, dt * 1.5); c.vy += (-55 - c.vy) * (1 - Math.exp(-dt * 1.2)); }  // drift down slowly
       c.x += c.vx * dt; c.y += c.vy * dt;
       if (this.dead <= 0 && d < this.ramR + 16) { this.coins += c.v; c.age = -1; sfx("coin", c.x / HALF_W, c.v > 5 ? 0.5 : 0.3, c.v > 5 ? 0.8 : 1); }
     }
-    this.coinDrops = this.coinDrops.filter((c) => c.age >= 0 && c.y > -HALF_H - 40 && Math.abs(c.x) < HALF_W + 40);
+    this.coinDrops = this.coinDrops.filter((c) => c.age >= 0 && c.age < COIN_LIFE && c.y > -HALF_H - 40 && Math.abs(c.x) < HALF_W + 40);
     const n = this.coinDrops.length;
     for (let i = 0; i < n; i++) {
-      const c = this.coinDrops[i], s = c.v > 5 ? 15 : 9;
+      const c = this.coinDrops[i], blink = c.age > COIN_LIFE - 3 && Math.floor(c.age * 8) % 2 === 0;
+      const s = (c.v > 5 ? 15 : 9) * (blink ? 0.001 : 1);
       this.dummy.position.set(c.x, c.y, 4);
       this.dummy.rotation.set(0, 0, 0);
       this.dummy.scale.set(s * Math.max(0.2, Math.abs(Math.cos(c.age * 5))), s * 1.3, 1);
