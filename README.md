@@ -22,11 +22,12 @@ npm run build      # static files in dist/ (host anywhere)
 
 ## On a phone or tablet
 
-Play sideways (landscape); it goes full screen when a level starts, where the browser allows it.
+Play sideways (landscape).
 
-- **Left half**: the steering area. Put your thumb down anywhere and drag: a stick appears under it.
-- **Right side**: the special button (the secondary weapon; its ring fills up as the cooldown runs), SLOW for precise dodging (BRAKE in tunnels) and SHOP (pause).
-- The primary weapons fire by themselves at enemies on screen.
+- **Tilt steering** (the default): tilt the phone like a marble board: lower the right edge to go right, the top edge (away from you) to go up. Level is how you hold the phone when a run starts or resumes; RE-CENTER sets it again. On iPhone, allow motion access when asked.
+- With tilt, both thumbs are free: **FIRE** (left, hold: the primary weapons) and **SPECIAL** (right: the secondary weapon; its ring fills as the cooldown runs). In tunnels the right button is **BRAKE**.
+- **Stick steering** (switch with STEERING in the menu or the pause screen; also used when the phone has no tilt sensor): touch anywhere on the left half and drag, a stick appears under your thumb; the primaries fire by themselves at enemies.
+- SHOP (pause) and full screen are small buttons on the right.
 - Menus, the hangar, the gallery and the shop are tapped; BACK, NEXT, RESUME and MENU buttons stand in for the keys.
 - On a computer, add `?touch` to the address to try the touch controls.
 

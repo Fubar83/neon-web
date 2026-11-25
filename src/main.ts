@@ -92,7 +92,7 @@ const shop = new Panel($("hangar"), () => ({
   title: "PAUSED - SHOP", right: "COINS " + (game?.coins ?? 0).toLocaleString("en-US"),
   rows: game ? shopRows(game) : [],
   note: "Bought for this run only. Coins drop from destroyed enemies; fly close to collect them.",
-  help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="Escape">MENU</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P resume &nbsp; ESC menu`,
+  help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="Escape">MENU</span> <span class="tapk" data-fs>FULL SCREEN</span> <span class="tapk" data-steer></span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P resume &nbsp; ESC menu`,
 }));
 const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
 
@@ -200,7 +200,7 @@ function startLevel() {
   scene.add(game.root);
   playMusic(l.music, l.seed);
   // Phones: go full screen (and sideways, where the browser allows it) when a level is tapped.
-  if (touch.enabled) enterFullscreen();
+  if (touch.enabled) { enterFullscreen(); touch.requestTilt(); }
   endTimer = 0;
 }
 
@@ -389,7 +389,8 @@ function tick(dt: number) {
   // Touch controls: shown while playing (steer + brake in tunnels), hidden in menus and the pause.
   const playing = !!game && !inMenu && !inGallery && !inHangar && !paused && !game.done && !game.over;
   const sec = game?.secondary ?? null;
-  touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0);
+  touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0, dt);
+  if (game) game.autoFire = !touch.manualFire;
   render();
 }
 
@@ -455,6 +456,7 @@ requestAnimationFrame(frameLoop);
   get game() { return game; }, get inMenu() { return inMenu; }, startLevel: (i: number) => { menuIndex = i; startLevel(); }, simulate,
   gallery: (i: number) => { galleryIndex = i; openGallery(); },
   hangar: () => { menuIndex = LEVELS.length; startLevel(); },
+  touch,
   get loadout() { return loadout; },
   shop: () => shop, hangarPanel: () => hangar,
   get paused() { return paused; },

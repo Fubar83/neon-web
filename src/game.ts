@@ -167,6 +167,8 @@ export class Game {
   private coinDrops: Coin[] = [];
   private coinMesh: THREE.InstancedMesh;
   secCool = 0;
+  /** Primaries fire by themselves at enemies on screen (off when steering by tilt: there FIRE is a button). */
+  autoFire = true;
   addons: AddonKind[] = [];
   hullKind: HullKind = "falcon";
   maxHull = 100;
@@ -385,7 +387,7 @@ export class Game {
     this.quietHitT -= dt;
     // Primaries (all of them, together) on the fire key.
     // Primaries fire by themselves whenever an enemy is on screen (J / Z fires too, e.g. at nothing).
-    const firing = input.fire() || (!this.demo && this.targets().length > 0);
+    const firing = input.fire() || (this.autoFire && !this.demo && this.targets().length > 0);
     if (firing) for (const p of this.primaries) this.fireGun(dt, p);
     // Secondary: its own key, then a cooldown.
     if (input.fire2() && this.secondary && this.secCool <= 0) { this.fireGun(dt, this.secondary); this.secCool = this.cooldown(this.secondary); }
