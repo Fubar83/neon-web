@@ -429,6 +429,8 @@ let lastT = performance.now();
 function frameLoop(now: number) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
+  // Away: everything stands still. The key or tap that brings the game back does nothing else.
+  if (away || swallow) { swallow = false; input.endFrame(); requestAnimationFrame(frameLoop); return; }
   tick(dt);
   input.endFrame();
   requestAnimationFrame(frameLoop);
@@ -453,6 +455,9 @@ function tick(dt: number) {
     if (input.hit("ArrowRight", "KeyD", "ArrowDown", "KeyS")) { sfx("menuMove"); showEntry(galleryIndex + 1); }
     if (input.hit("ArrowLeft", "KeyA", "ArrowUp", "KeyW")) { sfx("menuMove"); showEntry(galleryIndex - 1); }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
+    const mv = input.move();
+    if (input.anyHeld() || Math.abs(mv.x) + Math.abs(mv.y) > 0.1 || input.fire()) lastActive = performance.now();
+    else if (!game.done && !game.over && performance.now() - lastActive > IDLE_MS) { goAway(); return; }
     game.update(dt, input);
     world?.update(dt, 120);
     updateGalleryMsg();
@@ -485,6 +490,9 @@ function tick(dt: number) {
     if (input.hit("KeyP", "Tab") && !game.tunnel && !game.done && !game.over) setPaused(!paused);
     if (paused) { hangarKeys(); musicFollow(); updateHud(); touch.update("hidden", null, 0); render(); return; }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
+    const mv = input.move();
+    if (input.anyHeld() || Math.abs(mv.x) + Math.abs(mv.y) > 0.1 || input.fire()) lastActive = performance.now();
+    else if (!game.done && !game.over && performance.now() - lastActive > IDLE_MS) { goAway(); return; }
     game.update(dt, input);
     if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
     musicFollow();
@@ -544,6 +552,8 @@ function simulate(seconds: number) {
 // runs. It also stops when the phone locks or the browser goes to the background; the next tap restarts it.
 let silentEl: HTMLAudioElement | null = null;
 const unlock = () => {
+  lastActive = performance.now();
+  if (away) { comeBack(); return; }
   const fresh = !ctx;
   initAudio();
   if (ctx!.state !== "running") ctx!.resume().catch(() => {});
@@ -556,7 +566,29 @@ const unlock = () => {
   if (fresh && inMenu) { playMusic("Menu", 7); if (music) music.energy = 0.2; }
 };
 for (const ev of ["keydown", "pointerdown", "pointerup", "touchend", "click"]) window.addEventListener(ev, unlock, true);
-document.addEventListener("visibilitychange", () => { if (!document.hidden && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !away && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); });
+
+// Away: the page loses focus or is hidden (another window or tab, the phone locks), or a run gets no input
+// for a while. The game freezes and all sound stops until a key, tap or click brings it back.
+const IDLE_MS = 30000;
+let away = false, swallow = false, lastActive = performance.now();
+function goAway() {
+  if (away) return;
+  away = true;
+  $("away").style.display = "flex";
+  if (ctx && ctx.state === "running") ctx.suspend().catch(() => {});
+}
+function comeBack() {
+  if (!away || document.hidden) return;
+  away = false; swallow = true;
+  $("away").style.display = "none";
+  lastActive = performance.now();
+  if (ctx) ctx.resume().catch(() => {});
+}
+window.addEventListener("blur", goAway);
+window.addEventListener("pagehide", goAway);
+document.addEventListener("visibilitychange", () => { if (document.hidden) goAway(); });
+for (const ev of ["pointermove", "touchmove", "wheel"]) window.addEventListener(ev, () => { lastActive = performance.now(); }, { passive: true });
 /** A short silent WAV, made here. */
 function silentWav(): string {
   const n = 4410, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
@@ -572,10 +604,6 @@ $("stage").addEventListener("pointerdown", (e) => {
   if (!paused || confirming || inMenu || inHangar || inGallery) return;
   if ((e.target as HTMLElement).closest("#hangar, #confirm")) return;
   setPaused(false);
-});
-// The phone locks or you switch away mid-run: open the shop (pause) so nothing happens meanwhile.
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && game && !inMenu && !inHangar && !inGallery && !paused && !game.tunnel && !game.done && !game.over) setPaused(true);
 });
 setupFullscreen();
 if (touch.enabled && !fullscreenSupported) $("fshint").textContent = "Full screen on iPhone: Share, then Add to Home Screen, and start NEON from there.";

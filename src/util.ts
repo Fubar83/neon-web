@@ -47,6 +47,8 @@ export class Input {
   down(...codes: string[]) { return codes.some((c) => this.held.has(c)); }
   hit(...codes: string[]) { return codes.some((c) => this.pressed.has(c)); }
   endFrame() { this.pressed.clear(); }
+  /** Any key (or on-screen button) held right now. */
+  anyHeld() { return this.held.size > 0; }
   /** Movement from WASD / arrows (and a gamepad's left stick). */
   move(): { x: number; y: number } {
     let x = (this.down("KeyD", "ArrowRight") ? 1 : 0) - (this.down("KeyA", "ArrowLeft") ? 1 : 0);
