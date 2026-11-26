@@ -34,7 +34,65 @@ export interface LevelDef {
   gentle?: { waves: number; fire: number; shotSpeed: number; damage: number; endless: boolean };
 }
 
-export type BossKind = "fortress" | "dreadnought";
+export type BossKind = "fortress" | "dreadnought" | "warden";
+
+/** Boss attacks: one at a time, each with a warning first. */
+type AttackKind = "volley" | "fan" | "ring" | "spiral" | "missiles" | "mines" | "grid" | "sweep" | "charge";
+const ATTACKS: Record<AttackKind, { name: string; warn: number; time: number }> = {
+  volley: { name: "AIMED VOLLEYS", warn: 0.7, time: 2.6 },
+  fan: { name: "SWEEPING FANS", warn: 0.7, time: 2.8 },
+  ring: { name: "RINGS - FIND THE GAP", warn: 0.8, time: 3.2 },
+  spiral: { name: "SPIRAL", warn: 0.7, time: 3.0 },
+  missiles: { name: "HOMING MISSILES - SHOOT THEM DOWN", warn: 0.8, time: 2.4 },
+  mines: { name: "MINES", warn: 0.7, time: 2.6 },
+  grid: { name: "LASER GRID - FIND THE LANE", warn: 1.3, time: 2.2 },
+  sweep: { name: "LASER SWEEP - KEEP MOVING", warn: 1.1, time: 3.0 },
+  charge: { name: "RAM - GET OUT OF THE WAY", warn: 1.0, time: 1.6 },
+};
+
+/** A boss: a frame and three sections opened in order (a section can be one or two parts), each with its own attacks. */
+interface SectionDef { name: string; at: [number, number][]; r: number; hp: number; color: number; shape: (r: number) => THREE.Vector3[][]; attacks: AttackKind[] }
+interface BossDef { name: string; color: number; w: number; h: number; outline: () => THREE.Vector3[][]; sections: SectionDef[] }
+const vv = (pts: number[][]) => pts.map(([x, y]) => new THREE.Vector3(x, y, 0));
+const BOSS_DEFS: Record<BossKind, BossDef> = {
+  fortress: {
+    name: "FORTRESS", color: 0x8899ff, w: 290, h: 230,
+    outline: () => [polygon(6, 300, 0), polygon(6, 215, 0), vv([[-300, 0], [-215, 0]]), vv([[215, 0], [300, 0]])],
+    sections: [
+      { name: "GUN DECK", at: [[0, -150]], r: 92, hp: 140, color: 0xffcc33, attacks: ["volley", "fan"],
+        shape: (r) => [vv([[-r * 1.4, r * 0.5], [r * 1.4, r * 0.5], [r * 1.1, -r * 0.6], [-r * 1.1, -r * 0.6]]), ...[-0.8, 0, 0.8].map((x) => vv([[x * r, -r * 0.6], [x * r, -r * 1.1]])), circle(r * 0.32, 20)] },
+      { name: "GENERATORS", at: [[-190, 10], [190, 10]], r: 62, hp: 160, color: 0x66ff88, attacks: ["missiles", "ring", "volley"],
+        shape: (r) => [circle(r, 32), star(6, r * 0.75, 0.45), circle(r * 0.3, 16)] },
+      { name: "CORE", at: [[0, 60]], r: 84, hp: 240, color: 0xff3355, attacks: ["grid", "spiral", "missiles"],
+        shape: (r) => [polygon(6, r), polygon(6, r * 0.62), circle(r * 0.28, 20)] },
+    ],
+  },
+  dreadnought: {
+    name: "DREADNOUGHT", color: 0xff66cc, w: 200, h: 260,
+    outline: () => [vv([[0, -280], [150, -130], [195, 110], [95, 250], [-95, 250], [-195, 110], [-150, -130]]), vv([[0, -280], [0, 250]])],
+    sections: [
+      { name: "BOW GUNS", at: [[0, -175]], r: 80, hp: 140, color: 0xffaa33, attacks: ["fan", "mines"],
+        shape: (r) => [vv([[0, -r * 1.2], [r, -r * 0.2], [r * 0.8, r * 0.7], [-r * 0.8, r * 0.7], [-r, -r * 0.2]]), vv([[-r * 0.4, -r * 0.3], [-r * 0.4, -r * 1.3]]), vv([[r * 0.4, -r * 0.3], [r * 0.4, -r * 1.3]])] },
+      { name: "BROADSIDES", at: [[-165, 20], [165, 20]], r: 62, hp: 170, color: 0x33ccff, attacks: ["sweep", "volley", "mines"],
+        shape: (r) => [polygon(4, r, 0), circle(r * 0.55, 20), vv([[-r, 0], [r, 0]])] },
+      { name: "REACTOR", at: [[0, 150]], r: 82, hp: 240, color: 0xff3355, attacks: ["charge", "missiles", "spiral", "sweep"],
+        shape: (r) => [circle(r, 40), polygon(3, r * 0.8), polygon(3, r * 0.8, -Math.PI / 2), circle(r * 0.25, 16)] },
+    ],
+  },
+  warden: {
+    name: "WARDEN", color: 0x55ffdd, w: 280, h: 250,
+    outline: () => [circle(280, 64), circle(205, 56), ...[0, 1, 2, 3, 4, 5].map((k) => { const a = (k / 6) * Math.PI * 2; return vv([[Math.cos(a) * 205, Math.sin(a) * 205], [Math.cos(a) * 280, Math.sin(a) * 280]]); })],
+    sections: [
+      { name: "PYLONS", at: [[-235, -60], [235, -60]], r: 58, hp: 150, color: 0xaa77ff, attacks: ["ring", "mines"],
+        shape: (r) => [polygon(5, r), star(5, r * 0.7, 0.4), circle(r * 0.25, 12)] },
+      { name: "CROWN", at: [[-155, 150], [155, 150]], r: 60, hp: 160, color: 0xffd860, attacks: ["grid", "volley", "ring"],
+        shape: (r) => [vv([[-r, -r * 0.6], [-r * 0.6, r * 0.8], [-r * 0.2, -r * 0.1], [0, r], [r * 0.2, -r * 0.1], [r * 0.6, r * 0.8], [r, -r * 0.6]]), circle(r * 0.3, 16)] },
+      { name: "EYE", at: [[0, 0]], r: 88, hp: 250, color: 0xff3355, attacks: ["sweep", "missiles", "spiral", "grid"],
+        shape: (r) => [vv(Array.from({ length: 25 }, (_, i) => { const a = (i / 24) * Math.PI * 2; return [Math.cos(a) * r, Math.sin(a) * r * 0.55]; })), circle(r * 0.42, 28), circle(r * 0.16, 12)] },
+    ],
+  },
+};
+
 /** What the gallery can show: the player's ship, an enemy kind or a mini-boss. */
 export type DemoKind = "ship" | "weapons" | "hangar" | EnemyKind | BossKind;
 /** The gallery shows everything left of centre, clear of its info panel. */
@@ -55,19 +113,19 @@ const WEAPON_DEMO: DemoStep[] = ([
   { msg: "ADD-ON: HOMING MISSILES - FIRE BY THEMSELVES", missiles: true },
 ] as Omit<DemoStep, "t" | "lvl">[]).map((s) => ({ t: 7, lvl: 3, targets: true, ...s }));
 /** Three mini-bosses between the tunnels: two of one kind, one of the other. */
-const BOSSES = (a: BossKind, b: BossKind) => [{ at: 4600, kind: a }, { at: 8200, kind: b }, { at: 14800, kind: a }];
+const BOSSES = (a: BossKind, b: BossKind, c: BossKind) => [{ at: 4600, kind: a }, { at: 8200, kind: b }, { at: 14800, kind: c }];
 const TUNNELS = (simple: number[]) => [2800, 6400, 10000, 13600].map((at, i) => ({ at, length: 120000, simplicity: simple[i] }));
 
 export const LEVELS: LevelDef[] = [
   { id: "kids", name: "Sunny Synth", group: "FOR KIDS", theme: "Synthwave", music: "Bounce", seed: 4242, speed: 18, finish: 10000, startDifficulty: 0,
-    tiers: [["drone"], ["rock"], ["splitter"]], tunnels: [2500, 5500, 8500].map((at) => ({ at, length: 60000, simplicity: 1 })), bosses: [{ at: 4000, kind: "fortress" }, { at: 7000, kind: "dreadnought" }],
+    tiers: [["drone"], ["rock"], ["splitter"]], tunnels: [2500, 5500, 8500].map((at) => ({ at, length: 60000, simplicity: 1 })), bosses: [{ at: 4000, kind: "fortress" }, { at: 7000, kind: "warden" }],
     gentle: { waves: 1.9, fire: 2.2, shotSpeed: 0.55, damage: 0.5, endless: true } },
   { id: "nt01", name: "1  Clockwork Foundry", group: "NEON THEMES", theme: "Clockwork", music: "House", seed: 101, speed: 22, finish: 16000, startDifficulty: 0,
-    tiers: [["drone"], ["splitter"], ["burster"], ["cog"], ["fighter"], ["blinker"]], tunnels: TUNNELS([0.75, 0.6, 0.45, 0.3]), bosses: BOSSES("fortress", "dreadnought") },
+    tiers: [["drone"], ["splitter"], ["burster"], ["cog"], ["fighter"], ["blinker"]], tunnels: TUNNELS([0.75, 0.6, 0.45, 0.3]), bosses: BOSSES("fortress", "dreadnought", "warden") },
   { id: "nt02", name: "2  Circuit Board", group: "NEON THEMES", theme: "Circuit", music: "Chiptune", seed: 202, speed: 22, finish: 16000, startDifficulty: 0.1,
-    tiers: [["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog"], ["burster"]], tunnels: TUNNELS([0.65, 0.5, 0.35, 0.2]), bosses: BOSSES("dreadnought", "fortress") },
+    tiers: [["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog"], ["burster"]], tunnels: TUNNELS([0.65, 0.5, 0.35, 0.2]), bosses: BOSSES("dreadnought", "warden", "fortress") },
   { id: "nt03", name: "3  Synthwave Sunset", group: "NEON THEMES", theme: "Synthwave", music: "Synthwave", seed: 303, speed: 23, finish: 16000, startDifficulty: 0.2,
-    tiers: [["fighter"], ["drone"], ["burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.55, 0.4, 0.25, 0.1]), bosses: BOSSES("fortress", "dreadnought") },
+    tiers: [["fighter"], ["drone"], ["burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.55, 0.4, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "dreadnought") },
 ];
 
 const hitMats = new Map<number, LineMaterial>();
@@ -79,7 +137,9 @@ function hitMat(c: number) {
 
 interface Shot { x: number; y: number; vx: number; vy: number; r: number; color: THREE.Color; dmg: number; life: number; kind?: "missile" | "lava"; target?: Target | null; done?: boolean;
   /** Enemies it can still go through, and those it already hit; a missile's blast radius. */
-  pierce?: number; hitRefs?: Set<object>; blast?: number }
+  pierce?: number; hitRefs?: Set<object>; blast?: number;
+  /** Enemy shots: a homing missile's turn rate (it can be shot down); a mine's fuse (it bursts into a ring). */
+  homing?: number; fuse?: number }
 interface Enemy {
   kind: EnemyKind; obj: THREE.Group; mats: LineMaterial[]; color: THREE.Color; rng: Rng;
   x: number; y: number; sx: number; sy: number; age: number; hp: number; maxHp: number; r: number; score: number;
@@ -90,8 +150,11 @@ interface Enemy {
 /** A wave: destroy every member (fragments too) for a bonus; one getting away spoils it. */
 interface WaveGroup { alive: number; value: number; spoiled: boolean }
 /** A mini-boss part: destroyed in stages (turrets or engines, then generators or turrets, then the core). */
-interface BossPart { kind: "turret" | "engine" | "generator" | "core"; ox: number; oy: number; r: number; hp: number; maxHp: number; stage: number; obj: THREE.Group; mat: LineMaterial; shieldMat: LineMaterial; shield: THREE.Object3D; alive: boolean; fireT: number }
-interface Boss { kind: BossKind; name: string; x: number; y: number; sx: number; age: number; parts: BossPart[]; stage: number; frame: THREE.Group; frameMat: LineMaterial; rng: Rng; spiral: number; leaving: boolean }
+interface BossAttack { kind: AttackKind; phase: "warn" | "fire"; t: number; step: number; n: number; aim: number; lanes: number[] }
+interface Beam { obj: THREE.Group; glow: THREE.Mesh; core: THREE.Mesh; x: number; y: number; ang: number; len: number; half: number; warn: boolean; life: number; follow: boolean; ox: number; oy: number }
+interface BossPart { kind: "turret" | "engine" | "generator" | "core"; label: string; ox: number; oy: number; r: number; hp: number; maxHp: number; stage: number; obj: THREE.Group; mat: LineMaterial; shieldMat: LineMaterial; shield: THREE.Object3D; alive: boolean; fireT: number }
+interface Boss { kind: BossKind; name: string; x: number; y: number; sx: number; age: number; parts: BossPart[]; stage: number; frame: THREE.Group; frameMat: LineMaterial; rng: Rng; spiral: number; leaving: boolean;
+  attack: BossAttack | null; attackIndex: number; nextAttack: number; charge: { t: number; x0: number; tx: number; ty: number } | null; beams: Beam[] }
 interface Spark { pos: THREE.Vector3; vel: THREE.Vector3; life: number; max: number; color: THREE.Color }
 interface Ring { obj: LineSegments2; mat: LineMaterial; life: number; max: number; scale: number }
 
@@ -900,66 +963,54 @@ export class Game {
     this.burst(x, y, new THREE.Color(2, 1.8, 0.6), 24, 380);
   }
 
-  // --- Mini-bosses: parts in order ---
+  // --- Bosses: three big sections, one open at a time; one attack at a time (warning, attack, rest) ---
   private spawnBoss(kind: BossKind) {
-    // Only the boss: the enemies still around fly off (no score, no penalty) and their shots fade.
-    for (const e of [...this.enemies]) {
-      if (e.dying <= 0) this.burst(e.x, e.y, e.color.clone().multiplyScalar(0.8), 8, 200);
-      e.counted = true;
-      this.remove(e);
-    }
-    this.groups.clear();
-    this.eshots = [];
+    const def = BOSS_DEFS[kind];
     const rng = new Rng(this.level.seed * 7777 + this.bossIndex * 31);
     const frame = new THREE.Group();
-    const frameMat = lineMaterial(kind === "fortress" ? 0x8899ff : 0xff66cc, 3, 1.6);
+    const frameMat = lineMaterial(def.color, 3, 1.4);
     const parts: BossPart[] = [];
-    const d = this.difficulty, hpScale = (this.demo ? 1 : 5) * (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
-    const addPart = (pk: BossPart["kind"], ox: number, oy: number, r: number, hp: number, stage: number) => {
-      const color = pk === "turret" ? 0xffcc33 : pk === "engine" ? 0x33ccff : pk === "generator" ? 0x66ff66 : 0xff3355;
-      const mat = lineMaterial(color, 3, 2.4);
-      const obj = new THREE.Group();
-      const shape = pk === "turret" ? [polygon(8, r), cross(r * 0.7, r * 0.2)] : pk === "engine" ? [polygon(4, r, 0), circle(r * 0.55, 20)] : pk === "generator" ? [circle(r, 32), star(6, r * 0.75, 0.45)] : [polygon(6, r), polygon(6, r * 0.6), circle(r * 0.3, 20)];
-      obj.add(polylines(shape, true, mat));
-      const shieldMat = lineMaterial(0x6688ff, 2, 0.8);
-      const shield = polylines([circle(r + 14, 40)], true, shieldMat);
-      obj.add(shield);
-      obj.position.set(ox, oy, 1);
-      frame.add(obj);
-      parts.push({ kind: pk, ox, oy, r, hp: hp * hpScale, maxHp: hp * hpScale, stage, obj, mat, shieldMat, shield, alive: true, fireT: rng.range(0.5, 1.5) });
-    };
-    const outline: THREE.Vector3[][] = [];
-    if (kind === "fortress") {
-      // A hexagonal fortress: four corner turrets, two generators, the core in the middle.
-      outline.push(polygon(6, 260, 0), polygon(6, 170, 0));
-      for (const [x, y] of [[-200, 110], [200, 110], [-200, -110], [200, -110]]) addPart("turret", x, y, 34, 14, 0);
-      for (const x of [-110, 110]) addPart("generator", x, 0, 38, 26, 1);
-      addPart("core", 0, 0, 52, 60, 2);
-    } else {
-      // A long dreadnought: engines at the back, turrets along the sides, the core at the bow.
-      const hull = [[0, 220], [120, 90], [150, -160], [60, -230], [-60, -230], [-150, -160], [-120, 90]].map(([x, y]) => new THREE.Vector3(x, y, 0));
-      outline.push(hull);
-      for (const x of [-80, 0, 80]) addPart("engine", x, -200, 30, 16, 0);
-      for (const [x, y] of [[-120, -40], [120, -40]]) addPart("turret", x, y, 34, 22, 1);
-      addPart("core", 0, 120, 48, 60, 2);
-    }
-    frame.add(polylines(outline, true, frameMat));
+    const d = this.difficulty;
+    const hpScale = (this.demo ? 0.25 : 1.6) * (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
+    def.sections.forEach((sec, stage) => {
+      for (const [ox, oy] of sec.at) {
+        const mat = lineMaterial(sec.color, 3.5, 2.4);
+        const obj = new THREE.Group();
+        obj.add(polylines(sec.shape(sec.r), true, mat));
+        const shieldMat = lineMaterial(0x6688ff, 2, 0.9);
+        const shield = polylines([circle(sec.r + 16, 48)], true, shieldMat);
+        obj.add(shield);
+        obj.position.set(ox, oy, 1);
+        frame.add(obj);
+        const hp = (sec.hp / sec.at.length) * hpScale;
+        parts.push({ kind: "core", label: sec.name, ox, oy, r: sec.r, hp, maxHp: hp, stage, obj, mat, shieldMat, shield, alive: true, fireT: 0 });
+      }
+    });
+    frame.add(polylines(def.outline(), true, frameMat));
     this.root.add(frame);
-    const name = kind === "fortress" ? "MINI-BOSS: FORTRESS" : "MINI-BOSS: DREADNOUGHT";
-    this.boss = { kind, name, x: 0, y: HALF_H + 320, sx: 0, age: 0, parts, stage: 0, frame, frameMat, rng, spiral: 0, leaving: false };
+    this.boss = { kind, name: def.name, x: 0, y: HALF_H + 380, sx: 0, age: 0, parts, stage: 0, frame, frameMat, rng, spiral: 0, leaving: false,
+      attack: null, attackIndex: 0, nextAttack: 2.2, charge: null, beams: [] };
     this.refreshShields();
-    this.say(name + (kind === "fortress" ? "  -  TURRETS FIRST" : "  -  ENGINES FIRST"), 3);
-    sfx("warning", 0, 0.9);
+    this.say(`BOSS: ${def.name}  -  ${def.sections[0].name} FIRST`, 3);
+    sfx("warning", 0, 1);
   }
 
   private refreshShields() {
     const b = this.boss!;
     for (const p of b.parts) {
       p.shield.visible = p.alive && p.stage > b.stage;
-      p.mat.opacity = p.stage > b.stage ? 0.35 : 1;
+      p.mat.opacity = p.stage > b.stage ? 0.3 : 1;
       p.mat.transparent = p.stage > b.stage;
       p.mat.needsUpdate = true;
     }
+  }
+
+  /** The boss's name for the health bar: which section is open. */
+  get bossLabel() {
+    const b = this.boss;
+    if (!b) return "";
+    const open = b.parts.find((p) => p.alive && p.stage === b.stage);
+    return `${b.name}  -  ${open ? open.label : ""}  (${b.stage + 1}/3)`;
   }
 
   private hitPart(p: BossPart, dmg: number, x: number, y: number, quiet = false) {
@@ -969,32 +1020,37 @@ export class Game {
     if (p.stage > b.stage) { if (show) { this.burst(x, y, new THREE.Color(0.6, 0.8, 2), 4, 200); sfx("shield", x / HALF_W, 0.25, 1.6); } return; }  // shielded: not yet
     p.hp -= dmg;
     if (show) {
-      p.obj.scale.setScalar(1.1);
+      p.obj.scale.setScalar(1.06);
       setTimeout(() => p.obj.scale.setScalar(1), 50);
       sfx("hit", x / HALF_W, 0.4);
     }
     if (p.hp > 0) return;
     p.alive = false;
     p.obj.visible = false;
-    this.explode(b.x + p.ox, b.y + p.oy, new THREE.Color(p.mat.color.getHex()).multiplyScalar(1.4), p.kind === "core" ? 3 : 1.3);
-    this.score += Math.round(((p.kind === "core" ? 5000 : p.kind === "generator" ? 1200 : 800) * (1 + 0.2 * this.minute)) / 10) * 10;
-    this.dropCoins(b.x + p.ox, b.y + p.oy, p.kind === "core" ? 200 : p.kind === "generator" ? 60 : 40);
+    const last = p.stage === 2;
+    this.explode(b.x + p.ox, b.y + p.oy, new THREE.Color(p.mat.color.getHex()).multiplyScalar(1.4), last ? 3 : 2);
+    this.score += Math.round(((last ? 6000 : 2000) / b.parts.filter((q) => q.stage === p.stage).length * (1 + 0.2 * this.minute)) / 10) * 10;
+    this.dropCoins(b.x + p.ox, b.y + p.oy, last ? 250 : 80);
     if (b.parts.some((q) => q.alive && q.stage === b.stage)) return;
-    // Stage cleared: the next parts lose their shields.
+    // Section destroyed: the next one opens; the boss reels for a moment, its attack stops.
     b.stage++;
+    this.endAttack(b);
+    b.nextAttack = 2.2;
     const next = b.parts.filter((q) => q.alive && q.stage === b.stage);
     if (next.length === 0) {
-      this.say("MINI-BOSS DESTROYED", 3);
-      for (let i = 0; i < 5; i++) this.explode(b.x + b.rng.range(-200, 200), b.y + b.rng.range(-150, 150), new THREE.Color(2, 1.2, 0.5), 1.5);
+      this.say("BOSS DESTROYED", 3);
+      for (let i = 0; i < 7; i++) this.explode(b.x + b.rng.range(-240, 240), b.y + b.rng.range(-180, 180), new THREE.Color(2, 1.2, 0.5), 1.6);
       this.removeBoss();
       return;
     }
-    this.say(next[0].kind === "core" ? "CORE EXPOSED!" : next[0].kind.toUpperCase() + "S EXPOSED");
+    this.say(`${p.label} DESTROYED  -  ${next[0].label} OPEN`, 2.5);
+    sfx("warning", 0, 0.7, 1.2);
     this.refreshShields();
   }
 
   private removeBoss() {
     const b = this.boss!;
+    this.endAttack(b);
     this.root.remove(b.frame);
     b.frame.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
     disposeMaterial(b.frameMat);
@@ -1002,7 +1058,7 @@ export class Game {
     this.boss = null;
   }
 
-  /** Boss health 0..1 (all parts), for the HUD. */
+  /** Boss health 0..1 (all sections), for the HUD. */
   get bossHealth() {
     if (!this.boss) return 0;
     let hp = 0, max = 0;
@@ -1017,36 +1073,173 @@ export class Game {
     if (!b) return;
     b.age += dt;
     this.bigFight = 1;
-    // In, hover and sway; it leaves after a while (or when a tunnel comes).
-    if (b.age > 150 || (this.level.tunnels[this.tunnelIndex] && this.dist > this.level.tunnels[this.tunnelIndex].at - 150)) b.leaving = true;
-    const targetY = b.leaving ? HALF_H + 500 : HALF_H - (this.demo ? 290 : 230);
-    b.y += (targetY - b.y) * (1 - Math.exp(-dt * (b.leaving ? 1.2 : 0.8)));
-    b.x = this.demo ? DEMO_X + Math.sin(b.age * 0.35) * 110 : Math.sin(b.age * 0.35) * 260;
+    if (b.age > 180) b.leaving = true;
+    // Movement: in, then a sway that gets wider and quicker with each section; a charge overrides it.
+    const st = b.stage, home = HALF_H - (this.demo ? 300 : 250);
+    const cx = this.demo ? DEMO_X : 0, sway = (this.demo ? 90 : [200, 300, 360][st] ?? 300);
+    let tx = cx + Math.sin(b.age * [0.3, 0.45, 0.6][st]) * sway, ty = b.leaving ? HALF_H + 600 : home + (st === 2 ? Math.sin(b.age * 0.9) * 40 : 0);
+    if (b.charge) {
+      const c = b.charge;
+      c.t += dt;
+      const k = c.t < 0.55 ? c.t / 0.55 : c.t < 0.9 ? 1 : Math.max(0, 1 - (c.t - 0.9) / 0.7);
+      tx = c.x0 + (c.tx - c.x0) * Math.min(1, c.t / 0.55);
+      ty = home + (c.ty - home) * k;
+      if (c.t > 1.6) b.charge = null;
+      b.x = tx; b.y = ty;
+    } else {
+      b.x += (tx - b.x) * (1 - Math.exp(-dt * 1.5));
+      b.y += (ty - b.y) * (1 - Math.exp(-dt * (b.leaving ? 1.2 : 0.9)));
+    }
     b.frame.position.set(b.x, b.y, 0);
-    b.frame.rotation.z = Math.sin(b.age * 0.5) * 0.06;
-    if (b.leaving && b.y > HALF_H + 420) { this.say("THE MINI-BOSS GOT AWAY"); this.removeBoss(); return; }
+    b.frame.rotation.z = Math.sin(b.age * 0.5) * 0.04;
+    if (b.leaving && b.y > HALF_H + 520) { this.say("THE BOSS GOT AWAY"); this.removeBoss(); return; }
     // Bumping into it hurts.
-    if (this.dead <= 0 && Math.abs(this.sx - b.x) < 230 && Math.abs(this.sy - b.y) < 200) this.hurt(35);
-    if (b.y > HALF_H - 60 || b.leaving) return;
-    // Fire from the live parts: turrets aim, engines and generators throw rings, the core spirals.
-    const fireScale = 0.6 * (this.level.gentle?.fire ?? 1) * Math.max(0.5, 1 - 0.3 * this.difficulty);  // fires often
-    for (const p of b.parts) {
-      if (!p.alive) continue;
-      p.fireT -= dt;
-      if (p.fireT > 0) continue;
-      const x = b.x + p.ox, y = b.y + p.oy;
-      const dx = this.sx - x, dy = this.sy - y, l = Math.hypot(dx, dy) || 1;
-      const fake = { x, y, r: p.r } as Enemy;
-      switch (p.kind) {
-        case "turret": p.fireT = 1.5 * fireScale; this.fireShots(fake, dx / l, dy / l, p.stage === b.stage ? 3 : 1, 12, 560, new THREE.Color(2, 1.6, 0.3), 9); break;
-        case "engine": p.fireT = 2.6 * fireScale; for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + (i - 3.5) * 0.3; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 370, new THREE.Color(0.4, 1.6, 2), 10); } break;
-        case "generator": p.fireT = 3 * fireScale; for (let i = 0; i < 10; i++) { const a = b.age + (i / 10) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 330, new THREE.Color(0.6, 2, 0.6), 11); } break;
-        case "core":
-          if (p.stage > b.stage) { p.fireT = 1; break; }
-          p.fireT = 0.16 * fireScale;
-          b.spiral += 0.45;
-          for (let i = 0; i < 4; i++) { const a = b.spiral + (i / 4) * Math.PI * 2; this.fireShots(fake, Math.cos(a), Math.sin(a), 1, 0, 360, new THREE.Color(2, 0.4, 0.6), 10); }
-          break;
+    if (this.dead <= 0 && Math.abs(this.sx - b.x) < BOSS_DEFS[b.kind].w && Math.abs(this.sy - b.y) < BOSS_DEFS[b.kind].h) this.hurt(35);
+    this.updateBeams(dt);
+    if (b.y > HALF_H - 40 || b.leaving) { this.endAttack(b); return; }
+    // The attack cycle.
+    const pace = (this.level.gentle?.fire ?? 1) * Math.max(0.7, 1 - 0.2 * this.difficulty);
+    if (!b.attack) {
+      b.nextAttack -= dt;
+      if (b.nextAttack > 0) return;
+      const list = BOSS_DEFS[b.kind].sections[st].attacks;
+      const kind = list[b.attackIndex++ % list.length];
+      const a = ATTACKS[kind];
+      b.attack = { kind, phase: "warn", t: a.warn, step: 0, n: 0, aim: 0, lanes: [] };
+      this.say(a.name, a.warn + 0.4);
+      this.beginAttack(b, b.attack);
+      return;
+    }
+    const at = b.attack;
+    at.t -= dt;
+    if (at.phase === "warn") {
+      // The open section flashes while the warning is up.
+      for (const p of b.parts) if (p.alive && p.stage === st) p.obj.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(b.age * 18)));
+      if (at.t <= 0) { at.phase = "fire"; at.t = ATTACKS[at.kind].time; at.step = 0; this.fireStart(b, at); }
+      return;
+    }
+    for (const p of b.parts) p.obj.scale.setScalar(1);
+    this.fireAttack(b, at, dt, pace);
+    if (at.t <= 0) { this.endAttack(b); b.nextAttack = (this.level.gentle ? 2.6 : 1.7) * Math.max(0.75, 1 - 0.15 * this.difficulty); }
+  }
+
+  /** Where shots come from: the open section's parts. */
+  private emitters(b: Boss) { return b.parts.filter((p) => p.alive && p.stage === b.stage).map((p) => ({ x: b.x + p.ox, y: b.y + p.oy, r: p.r })); }
+
+  /** Set-up during the warning: laser guide lines, a charge's target. */
+  private beginAttack(b: Boss, at: BossAttack) {
+    const em = this.emitters(b);
+    switch (at.kind) {
+      case "grid": {
+        // Vertical beams leaving one lane free (near where you are, but not exactly).
+        const lanes = [-560, -280, 0, 280, 560], free = b.rng.int(0, 4);
+        at.lanes = lanes.filter((_, i) => i !== free);
+        for (const x of at.lanes) this.addBeam(x, HALF_H + 40, -Math.PI / 2, 1100, 30, true, ATTACKS.grid.warn + ATTACKS.grid.time);
+        break;
+      }
+      case "sweep": {
+        for (const e of em) { const a = Math.atan2(this.sy - e.y, this.sx - e.x); this.addBeam(e.x, e.y, a, 1500, 22, true, ATTACKS.sweep.warn + ATTACKS.sweep.time, e); }
+        break;
+      }
+      case "charge": sfx("warning", 0, 0.5, 1.4); break;
+    }
+  }
+
+  /** The moment the warning ends. */
+  private fireStart(b: Boss, at: BossAttack) {
+    for (const beam of this.beams) beam.warn = false;  // guide lines become lasers
+    if (at.kind === "grid" || at.kind === "sweep") sfx("laser", 0, 1, 0.6);
+    if (at.kind === "charge") b.charge = { t: 0, x0: b.x, tx: clamp(this.sx, -HALF_W + 250, HALF_W - 250), ty: clamp(this.sy + 120, -HALF_H + 150, HALF_H - 250) };
+  }
+
+  private fireAttack(b: Boss, at: BossAttack, dt: number, pace: number) {
+    const em = this.emitters(b);
+    at.step -= dt;
+    const every = (sec: number) => { if (at.step > 0) return false; at.step = sec * pace; return true; };
+    const aimAt = (e: { x: number; y: number }) => { const dx = this.sx - e.x, dy = this.sy - e.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l] as [number, number]; };
+    const fake = (e: { x: number; y: number; r: number }) => ({ x: e.x, y: e.y, r: e.r * 0.6 }) as Enemy;
+    switch (at.kind) {
+      case "volley":
+        if (every(0.7)) for (const e of em) { const [ax, ay] = aimAt(e); this.fireShots(fake(e), ax, ay, 3, 13, 470, new THREE.Color(2, 1.6, 0.3), 9); }
+        break;
+      case "fan":
+        if (every(0.5)) { const e = em[at.n % em.length]; at.n++; const base = -Math.PI / 2 + Math.sin(at.n * 0.6) * 0.45; for (let i = 0; i < 7; i++) { const a = base + (i - 3) * 0.2; this.fireShots(fake(e), Math.cos(a), Math.sin(a), 1, 0, 320, new THREE.Color(0.4, 1.6, 2), 10); } }
+        break;
+      case "ring":
+        if (every(0.9)) {
+          const e = em[at.n++ % em.length];  // two parts take turns, so the gaps stay readable
+          const [ax, ay] = aimAt(e), gap = Math.atan2(ay, ax) + b.rng.range(-0.35, 0.35);
+          for (let i = 0; i < 20; i++) { const a = gap + (i / 20) * Math.PI * 2; if (i < 2 || i > 17) continue; this.fireShots(fake(e), Math.cos(a), Math.sin(a), 1, 0, 250, new THREE.Color(0.6, 2, 0.6), 11); }
+        }
+        break;
+      case "spiral":
+        if (every(0.13)) { const e = em[0]; b.spiral += 0.32; for (let i = 0; i < 2; i++) { const a = b.spiral + i * Math.PI; this.fireShots(fake(e), Math.cos(a), Math.sin(a), 1, 0, 290, new THREE.Color(2, 0.4, 0.6), 10); } }
+        break;
+      case "missiles":
+        if (every(1.1)) for (const e of em) for (const side of [-1, 1]) {
+          this.eshots.push({ x: e.x + side * e.r * 0.6, y: e.y - e.r * 0.4, vx: side * 220, vy: -120, r: 10, color: new THREE.Color(2.4, 1, 0.2), dmg: 14, life: 5.5, homing: 1.9 });
+          sfx("missile", e.x / HALF_W, 0.5, 0.7);
+        }
+        break;
+      case "mines":
+        if (every(0.6)) {
+          const e = em[at.n++ % em.length];
+          const x = clamp(e.x + b.rng.range(-320, 320), -HALF_W + 60, HALF_W - 60);
+          this.eshots.push({ x, y: e.y - e.r * 0.5, vx: 0, vy: -95, r: 15, color: new THREE.Color(2.4, 2, 0.4), dmg: 18, life: 9, fuse: b.rng.range(1.6, 2.2) });
+        }
+        break;
+      // grid / sweep: the beams do the work (updateBeams); charge: the movement does.
+    }
+  }
+
+  private endAttack(b: Boss) {
+    b.attack = null;
+    for (const beam of this.beams) { this.root.remove(beam.obj); (beam.glow.material as THREE.Material).dispose(); (beam.core.material as THREE.Material).dispose(); }
+    this.beams = [];
+    for (const p of b.parts) p.obj.scale.setScalar(1);
+  }
+
+  // --- Laser beams (boss): a thin guide line first, then a beam that hurts ---
+  private beams: Beam[] = [];
+  private beamGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+
+  private addBeam(x: number, y: number, ang: number, len: number, half: number, warn: boolean, life: number, from?: { x: number; y: number }) {
+    const glow = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 0.04, 0.25), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const core = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.35, 0.8), transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
+    core.position.z = 0.5;
+    const obj = new THREE.Group();
+    obj.add(glow, core);
+    this.root.add(obj);
+    this.beams.push({ obj, glow, core, x, y, ang, len, half, warn, life, follow: !!from, ox: from ? from.x - (this.boss?.x ?? 0) : 0, oy: from ? from.y - (this.boss?.y ?? 0) : 0 });
+  }
+
+  private updateBeams(dt: number) {
+    const b = this.boss;
+    for (const beam of [...this.beams]) {
+      beam.life -= dt;
+      if (beam.life <= 0) { this.root.remove(beam.obj); (beam.glow.material as THREE.Material).dispose(); (beam.core.material as THREE.Material).dispose(); this.beams.splice(this.beams.indexOf(beam), 1); continue; }
+      if (beam.follow && b) {
+        // A sweeping beam rides with the boss and turns toward you, slowly: keep moving.
+        beam.x = b.x + beam.ox; beam.y = b.y + beam.oy;
+        const want = Math.atan2(this.sy - beam.y, this.sx - beam.x);
+        let d = want - beam.ang; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+        beam.ang += clamp(d, -0.42 * dt, 0.42 * dt) * (beam.warn ? 3 : 1);
+      }
+      beam.obj.position.set(beam.x, beam.y, 3);
+      beam.obj.rotation.z = beam.ang - Math.PI / 2;
+      const flick = 0.85 + 0.3 * Math.random();
+      if (beam.warn) {
+        beam.glow.scale.set(4, beam.len, 1); (beam.glow.material as THREE.MeshBasicMaterial).opacity = 0.25 + 0.2 * Math.sin(this.runTime * 30);
+        beam.core.scale.set(1.5, beam.len, 1); (beam.core.material as THREE.MeshBasicMaterial).opacity = 0.5;
+        continue;
+      }
+      beam.glow.scale.set(beam.half * 1.7 * flick, beam.len, 1); (beam.glow.material as THREE.MeshBasicMaterial).opacity = 0.45;
+      beam.core.scale.set(beam.half * 0.45, beam.len, 1); (beam.core.material as THREE.MeshBasicMaterial).opacity = 1;
+      // Does it touch the ship?
+      if (this.dead <= 0) {
+        const dx = this.sx - beam.x, dy = this.sy - beam.y, ca = Math.cos(beam.ang), sa = Math.sin(beam.ang);
+        const along = dx * ca + dy * sa, across = Math.abs(-dx * sa + dy * ca);
+        if (along > 0 && along < beam.len && across < beam.half + this.hitR) this.hurt(12);
       }
     }
   }
@@ -1154,7 +1347,7 @@ export class Game {
     this.shots = []; this.eshots = [];
     this.demo = kind;
     this.demoT = 0; this.demoSpawnT = 0.5; this.demoSpawnedAt = 0; this.demoPhase = -1;
-    this.weapon = kind === "ship" ? 1 : kind === "fortress" || kind === "dreadnought" ? 4 : 3;
+    this.weapon = kind === "ship" ? 1 : kind in BOSS_DEFS ? 4 : 3;
     this.primaries = ["pulse"];
     this.addons = [];
     this.secondary = null;
@@ -1173,7 +1366,7 @@ export class Game {
     const k = this.demo!;
     this.runTime += dt;
     this.demoT += dt;
-    const isBoss = k === "fortress" || k === "dreadnought";
+    const isBoss = k in BOSS_DEFS;
     let fire = false, fire2 = false, slow = false;
     let tx = DEMO_X + Math.sin(this.runTime * 0.9) * 170;
     if (k === "hangar") {
@@ -1214,7 +1407,7 @@ export class Game {
       // Bring it on, watch it for a moment, then shoot it down; again once it's gone.
       const empty = isBoss ? !this.boss : this.enemies.length === 0;
       if (empty) { this.demoSpawnT -= dt; if (this.demoSpawnT <= 0) { this.demoSpawn(k); this.demoSpawnT = 1.2; } }
-      const watch: Record<string, number> = { drone: 2.6, rock: 1.6, splitter: 3, fighter: 3.4, burster: 4.2, blinker: 5, cog: 7, fortress: 5, dreadnought: 5 };
+      const watch: Record<string, number> = { drone: 2.6, rock: 1.6, splitter: 3, fighter: 3.4, burster: 4.2, blinker: 5, cog: 7, fortress: 3, dreadnought: 3, warden: 3 };
       if (this.demoT - this.demoSpawnedAt > watch[k]) {
         fire = true;
         if (this.boss) {
@@ -1268,7 +1461,7 @@ export class Game {
       case "splitter": add("splitter", X, top, 1); break;
       case "blinker": add("blinker", X, top); break;
       case "cog": add("cog", X, top + 280, 1); break;
-      case "fortress": case "dreadnought": this.spawnBoss(k); break;
+      case "fortress": case "dreadnought": case "warden": this.spawnBoss(k); break;
     }
   }
 
@@ -1323,6 +1516,30 @@ export class Game {
       s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp;
       if (Math.random() < 0.7) this.spark(s.x, s.y, -s.vx * 0.1 + (Math.random() - 0.5) * 40, -s.vy * 0.1 + (Math.random() - 0.5) * 40, 0.25, new THREE.Color(2, 0.9, 0.3));
     }
+    // Enemy missiles home in (slowly); mines fall and then burst into a ring.
+    const burstOut: Shot[] = [];
+    for (const m of this.eshots) {
+      if (m.homing) {
+        const want = Math.atan2(this.sy - m.y, this.sx - m.x);
+        let ang = Math.atan2(m.vy, m.vx), d = want - ang;
+        while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+        ang += clamp(d, -m.homing * dt, m.homing * dt);
+        const sp = Math.min(300, Math.hypot(m.vx, m.vy) + 200 * dt);
+        m.vx = Math.cos(ang) * sp; m.vy = Math.sin(ang) * sp;
+        if (Math.random() < 0.4) this.spark(m.x, m.y, -m.vx * 0.2, -m.vy * 0.2, 0.3, new THREE.Color(2, 0.7, 0.2));
+      }
+      if (m.fuse !== undefined) {
+        m.fuse -= dt;
+        m.color.setRGB(2.4, Math.floor(m.fuse * 6) % 2 ? 2 : 0.4, 0.3);
+        if (m.fuse <= 0) {
+          m.life = 0;
+          for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; burstOut.push({ x: m.x, y: m.y, vx: Math.cos(a) * 230, vy: Math.sin(a) * 230, r: 9, color: new THREE.Color(2.2, 1.8, 0.4), dmg: 10, life: 4 }); }
+          this.burst(m.x, m.y, new THREE.Color(2.2, 1.8, 0.4), 12, 260);
+          sfx("boomSmall", m.x / HALF_W, 0.4);
+        }
+      }
+    }
+    if (burstOut.length) this.eshots.push(...burstOut);
     const move = (list: Shot[]) => { for (const s of list) { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; } };
     move(this.shots); move(this.eshots);
     // Swept: does the shot's path this frame pass within reach of the target (fast shots can't skip past)?
@@ -1356,6 +1573,18 @@ export class Game {
           this.shotSpent(s, e);
           if (s.life <= 0) break;
         }
+      }
+    }
+    // Your shots can bring down enemy missiles.
+    for (const m of this.eshots) {
+      if (!m.homing || m.life <= 0) continue;
+      for (const s of this.shots) {
+        if (s.life <= 0 || s.kind === "lava" || !near(s, m.x, m.y, m.r + s.r + 4)) continue;
+        m.life = 0; this.score += 20;
+        this.burst(m.x, m.y, new THREE.Color(2.4, 1, 0.2), 10, 220);
+        sfx("boomSmall", m.x / HALF_W, 0.3, 1.4);
+        this.shotSpent(s, m);
+        break;
       }
     }
     // Lava that reaches the end of its flight bursts where it is.

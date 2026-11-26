@@ -280,43 +280,56 @@ export class TunnelRun {
   }
 
   private buildObstacles(r: Rng, ease: number) {
-    const maxSpeed = 9500, steerRate = 2.8;
+    const maxSpeed = 9500, steerRate = 2.8, D = Math.PI / 180;
     let s = this.firstObstacle, safe = 0;
-    let left = 0, kind = 0, seed = 1, index = 0, spacing = 4000, step = 0, zig = false;
+    let left = 0, kinds = [0], seeds = [1], index = 0, spacing = 4000, step = 0, zig = false;
     const nearBend = (at: number) => this.bendAround(at - 3500, at + 800) > 1 / 40000;
+    /** Places one obstacle of a kind around the safe line; returns how much extra room it took along the tube. */
+    const place = (kind: number, at: number, pr: Rng): number => {
+      switch (kind) {
+        case 0: { const half = pr.range(35, 60) * D; this.addBlock(at, safe + (pr.chance(0.5) ? 1 : -1) * pr.range(half + 0.45, Math.PI), half); return 0; }  // a block
+        case 1: { const half = pr.range(30, 45) * D; const mid = safe + Math.PI / 2 + pr.range(-1, 1) * (Math.PI / 2 - half - 0.45); this.addBlock(at, mid, half); this.addBlock(at, mid + Math.PI, half); return 0; }  // a pair
+        case 2: { const gap = pr.range(80, 110) * D; this.addBlock(at, safe + Math.PI, (2 * Math.PI - gap) / 2); return 0; }  // a ring with one gap
+        case 3: { const half = 50 * D, side = pr.chance(0.5) ? 1 : -1; this.addBlock(at, safe + side * (half + 0.5), half); this.addBlock(at + 1000, safe - side * (half + 0.5), half); return 1000; }  // a slalom
+        case 4: { for (const m of [60, 180, 300]) this.addBlock(at, safe + m * D, 30 * D); return 0; }  // three blades
+        case 5: { const dir = pr.chance(0.5) ? 1 : -1; for (let k = 0; k < 4; k++) this.addBlock(at + k * 700, safe + Math.PI + (k - 1.5) * dir * 0.9, 50 * D); return 2100; }  // a spiral round the far side
+        case 6: { for (let k = 0; k < 5; k++) this.addBlock(at, safe + (50 + k * 65) * D, 11 * D); return 0; }  // a row of pillars
+        case 7: { this.addBlock(at, safe + Math.PI + pr.range(-0.5, 0.5), 75 * D); return 0; }  // half the tube walled off
+        case 8: { for (const m of [45, 135, 225, 315]) this.addBlock(at, safe + m * D, 22 * D); return 0; }  // a cross: four blocks, four gaps
+        case 9: { const off = (pr.chance(0.5) ? 1 : -1) * 0.3; this.addBlock(at, safe - off + Math.PI, 130 * D); this.addBlock(at + 900, safe + off + Math.PI, 130 * D); return 900; }  // two gates, gaps a little apart
+        case 10: { for (const m of [90, 270]) this.addBlock(at, safe + m * D, 60 * D); return 0; }  // a ring with two gaps
+        default: { for (let k = 0; k < 5; k++) this.addBlock(at, safe + (50 + k * 65) * D, 11 * D); for (let k = 0; k < 4; k++) this.addBlock(at + 700, safe + (82 + k * 65) * D, 11 * D); return 700; }  // two staggered rows of pillars
+      }
+    };
     while (s < this.length - 2500) {
       const T = clamp((s - this.firstObstacle) / Math.max(1, this.length - this.firstObstacle), 0, 1);
       if (nearBend(s)) { s += 500; left = 0; continue; }
       if (left <= 0) {
-        // Kinds: 0 block, 1 pair, 2 ring gate, 3 slalom, 4 three blocks, 5 spiral, 6 pillars.
-        let pool = T < 0.15 ? [0, 6] : T < 0.35 ? [0, 1, 6, 4] : T < 0.6 ? [0, 1, 2, 4, 6, 5] : [0, 1, 2, 3, 4, 5, 6];
-        if (ease >= 0.7) pool = pool.filter((k) => k === 0 || k === 1 || k === 6);
-        kind = r.pick(pool);
-        left = r.int(3, 6);
+        // Kinds: 0 block, 1 pair, 2 ring gate, 3 slalom, 4 three blades, 5 spiral, 6 pillars, 7 half wall,
+        // 8 cross, 9 two gates, 10 two-gap ring, 11 two rows of pillars. More of them as the tunnel goes on.
+        let pool = T < 0.15 ? [0, 6, 7] : T < 0.35 ? [0, 1, 4, 6, 7, 10] : T < 0.6 ? [0, 1, 2, 4, 5, 6, 7, 8, 10, 11] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+        if (ease >= 0.7) pool = pool.filter((k) => [0, 1, 6, 7, 10].includes(k));
+        // Short groups; some alternate between two kinds.
+        const a = r.pick(pool), b2 = r.pick(pool);
+        kinds = r.chance(0.4) && b2 !== a ? [a, b2] : [a];
+        seeds = [r.int(1, 1 << 30), r.int(1, 1 << 30)];
+        left = r.int(2, 5);
         spacing = (4200 + (2600 - 4200) * T) * (1 + 0.4 * ease) * (1.4 + (1 - 1.4) * clamp(T / 0.3, 0, 1));
         const reach = steerRate * (spacing / maxSpeed) * 0.55;
         const pattern = r.int(0, 2);
         step = pattern === 0 ? 0 : (r.chance(0.5) ? 1 : -1) * reach * 0.8;
         zig = pattern === 2;
-        seed = r.int(1, 1 << 30);
         index = 0;
       }
       if (index > 0) { if (zig) step = -step; safe += step; }
-      const pr = new Rng(seed);  // the same shape for every obstacle in the group
-      switch (kind) {
-        case 0: { const half = pr.range(35, 60) * (Math.PI / 180); this.addBlock(s, safe + (pr.chance(0.5) ? 1 : -1) * pr.range(half + 0.45, Math.PI), half); break; }
-        case 1: { const half = pr.range(30, 45) * (Math.PI / 180); const mid = safe + Math.PI / 2 + pr.range(-1, 1) * (Math.PI / 2 - half - 0.45); this.addBlock(s, mid, half); this.addBlock(s, mid + Math.PI, half); break; }
-        case 2: { const gap = pr.range(80, 110) * (Math.PI / 180); this.addBlock(s, safe + Math.PI, (2 * Math.PI - gap) / 2); break; }
-        case 3: { const half = (50 * Math.PI) / 180, side = pr.chance(0.5) ? 1 : -1; this.addBlock(s, safe + side * (half + 0.5), half); this.addBlock(s + 1000, safe - side * (half + 0.5), half); s += 1000; break; }
-        case 4: { const half = (30 * Math.PI) / 180; for (const m of [60, 180, 300]) this.addBlock(s, safe + (m * Math.PI) / 180, half); break; }  // three blocks, the gap at the safe line
-        case 5: { const dir = pr.chance(0.5) ? 1 : -1, half = (50 * Math.PI) / 180; for (let k = 0; k < 4; k++) this.addBlock(s + k * 700, safe + Math.PI + (k - 1.5) * dir * 0.9, half); s += 2100; break; }  // a spiral of blocks round the far side
-        default: { const half = (11 * Math.PI) / 180; for (let k = 0; k < 5; k++) this.addBlock(s, safe + ((50 + k * 65) * Math.PI) / 180, half); break; }  // a row of thin pillars
-      }
+      const which = index % kinds.length;
+      s += place(kinds[which], s, new Rng(seeds[which]));  // the same shape each time a kind comes round in the group
       index++;
       s += spacing;
       if (--left === 0) s += spacing * 0.9;
     }
   }
+
 
   private hits(s0: number, s1: number, theta: number) {
     for (const a of this.arcs) if (s1 >= a.s0 && s0 <= a.s1 && Math.abs(wrap(theta - a.mid)) < a.half + SHIP_HALF) return true;

@@ -11,7 +11,7 @@ import { ADDONS, loadLoadout, saveLoadout, type Loadout } from "./loadout";
 import { Panel } from "./panel";
 import { hangarRows } from "./hangar";
 import { shopRows } from "./shop";
-import { Music } from "./music";
+import { Music, type MusicStyle } from "./music";
 import { initAudio, ctx, setRoom, sfx, musicBus } from "./audio";
 import { Input } from "./util";
 import { TouchControls } from "./touch";
@@ -68,6 +68,7 @@ let menuIndex = Number(localStorage.getItem("neon.menu") ?? 1);
 let inMenu = true;
 let inGallery = false;
 let inHangar = false;
+let inRadio = false;
 let paused = false;
 /** The "leave this run?" question is showing (the game is frozen meanwhile). */
 let confirming = false;
@@ -96,6 +97,67 @@ const shop = new Panel($("hangar"), () => ({
   note: "Bought for this run only. Coins drop from destroyed enemies; fly close to collect them.",
   help: `<span class="tapk" data-key="KeyP">RESUME</span> <span class="tapk" data-key="LeaveRun">LEAVE RUN</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE buy &nbsp; P or ESC resume (or tap the game)`,
 }));
+// --- Radio: every music style, a few songs each, and how hard it plays ---
+const RADIO: { style: MusicStyle; name: string; from: string; seed: number }[] = [
+  { style: "House", name: "HOUSE", from: "Plays in Clockwork Foundry.", seed: 101 },
+  { style: "Chiptune", name: "CHIPTUNE", from: "Plays in Circuit Board.", seed: 202 },
+  { style: "Synthwave", name: "SYNTHWAVE", from: "Plays in Synthwave Sunset.", seed: 303 },
+  { style: "Bounce", name: "BOUNCE", from: "Plays in Sunny Synth.", seed: 4242 },
+  { style: "Menu", name: "MENU", from: "Plays in the menu.", seed: 7 },
+  { style: "Deep", name: "DEEP", from: "Radio only: soft, deep house with bells.", seed: 11 },
+  { style: "Electro", name: "ELECTRO", from: "Radio only: rolling bass, square lead.", seed: 22 },
+  { style: "Crystal", name: "CRYSTAL", from: "Radio only: bright bells over four-to-the-floor.", seed: 33 },
+  { style: "Space", name: "SPACE", from: "Radio only: slow, wide pads.", seed: 44 },
+  { style: "Wobble", name: "WOBBLE", from: "Radio only: half-time with a wobble bass.", seed: 55 },
+  { style: "Breakbeat", name: "BREAKBEAT", from: "Radio only: fast broken beats.", seed: 66 },
+];
+const MOODS = [
+  { name: "CALM", energy: 0.2, boost: 0, desc: "Intro and breaks: little or no drums." },
+  { name: "GROOVE", energy: 0.55, boost: 0, desc: "As at the start of a run." },
+  { name: "FULL", energy: 0.8, boost: 0, desc: "As later in a run." },
+  { name: "BOSS", energy: 0.95, boost: 0.1, desc: "As in a boss fight: full and a little faster." },
+  { name: "TUNNEL", energy: 1, boost: 0.06, desc: "As in a tunnel dive." },
+];
+let radioStation = 0, radioTrack = 0, radioMood = 1, radioOn = false;
+function radioPlay() {
+  initAudio();
+  ctx?.resume();
+  const st = RADIO[radioStation];
+  startMusic(st.style, radioTrack === 0 ? st.seed : st.seed + radioTrack * 7919);
+  musicBus.gain.value = 0.5;  // the radio plays even when music is off for runs
+  radioOn = true;
+  radioMoodSet();
+}
+function radioMoodSet() { if (music) { music.energy = MOODS[radioMood].energy; music.tempoBoost = MOODS[radioMood].boost; } }
+const radio = new Panel($("hangar"), () => ({
+  title: "RADIO", right: radioOn ? `${RADIO[radioStation].name} ${radioTrack + 1}` : "STOPPED",
+  rows: [
+    { title: "STATION", items: RADIO.map((s, i) => ({ name: s.name, desc: s.from, selected: radioOn && radioStation === i, pick: () => { radioStation = i; radioTrack = 0; radioPlay(); return true; } })) },
+    { title: "SONG", items: [0, 1, 2, 3, 4, 5].map((k) => ({ name: String(k + 1), desc: k === 0 ? "The station's own song (the one its level plays)." : "Another song in the same style.", selected: radioOn && radioTrack === k, pick: () => { radioTrack = k; radioPlay(); return true; } })) },
+    { title: "MOOD", items: MOODS.map((m, i) => ({ name: m.name, desc: m.desc + " In a run the music follows the action by itself.", selected: radioMood === i, pick: () => { radioMood = i; radioMoodSet(); return true; } })) },
+    { title: "PLAYER", items: [
+      { name: radioOn ? "STOP" : "PLAY", desc: "Start or stop the radio.", pick: () => { if (radioOn) { music?.stop(); music = null; radioOn = false; } else radioPlay(); return true; } },
+      { name: "NEXT", desc: "The next song (then the next station).", pick: () => { if (++radioTrack > 5) { radioTrack = 0; radioStation = (radioStation + 1) % RADIO.length; } radioPlay(); return true; } },
+      { name: musicMuted ? "MUSIC IN RUNS: OFF" : "MUSIC IN RUNS: ON", desc: "Music during runs and in the menu (sound effects stay on). Same as the M key.", selected: !musicMuted, pick: () => { musicMuted = !musicMuted; localStorage.setItem("neon.muted", musicMuted ? "1" : "0"); return true; } },
+    ] },
+  ],
+  note: "All music is made live in the browser: each song comes from its style and a seed, so it sounds the same every time.",
+  help: `<span class="tapk" data-key="Escape">BACK</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; ARROWS move &nbsp; ENTER / SPACE pick &nbsp; ESC back`,
+}));
+function openRadio() {
+  initAudio();
+  ctx?.resume();
+  sfx("menuSelect");
+  inMenu = false;
+  inRadio = true;
+  menuEl.style.display = "none";
+  $("hangar").style.display = "block";
+  radio.reset();
+  radioStation = 4; radioTrack = 0;
+  radioPlay();
+  radio.render();
+}
+
 const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
 
 function setWorld(level: LevelDef) {
@@ -130,7 +192,7 @@ function renderMenu() {
   });
   // Extras: the hangar (loadout) and the gallery of enemies and the ship.
   const g = document.createElement("div"); g.className = "group"; g.textContent = "EXTRAS"; listEl.appendChild(g);
-  ["HANGAR: SHIP SET-UP", "GALLERY: ENEMIES & SHIP"].forEach((name, k) => {
+  ["HANGAR: SHIP SET-UP", "GALLERY: ENEMIES & SHIP", "RADIO: MUSIC PLAYER"].forEach((name, k) => {
     const idx = LEVELS.length + k;
     const d = document.createElement("div");
     d.className = "item" + (menuIndex === idx ? " sel" : "");
@@ -162,6 +224,7 @@ function openMenu() {
   inMenu = true;
   inGallery = false;
   inHangar = false;
+  inRadio = false;
   paused = false;
   setConfirm(false);
   $("gallery").style.display = "none";
@@ -179,7 +242,8 @@ function openMenu() {
 
 function startLevel() {
   if (menuIndex === LEVELS.length) { openHangar(); return; }
-  if (menuIndex > LEVELS.length) { openGallery(); return; }
+  if (menuIndex === LEVELS.length + 1) { openGallery(); return; }
+  if (menuIndex === LEVELS.length + 2) { openRadio(); return; }
   initAudio();
   ctx?.resume();
   const l = LEVELS[menuIndex];
@@ -248,7 +312,7 @@ function setPaused(on: boolean) {
 
 /** Arrow keys and Enter / Space in the side panel (hangar or shop). */
 function hangarKeys() {
-  const p = inHangar ? hangar : shop;
+  const p = inHangar ? hangar : inRadio ? radio : shop;
   if (input.hit("ArrowUp", "KeyW")) p.move(-1, 0);
   if (input.hit("ArrowDown", "KeyS")) p.move(1, 0);
   if (input.hit("ArrowLeft", "KeyA")) p.move(0, -1);
@@ -284,7 +348,7 @@ function showEntry(i: number) {
   GALLERY.forEach((t, j) => {
     const c = document.createElement("span");
     c.className = "gtab" + (j === galleryIndex ? " sel" : "");
-    c.textContent = t.name.replace("Mini-Boss: ", "");
+    c.textContent = t.name.replace("Boss: ", "");
     c.style.color = t.color;
     c.onclick = () => { sfx("menuMove"); showEntry(j); };
     tabs.appendChild(c);
@@ -295,7 +359,7 @@ function showEntry(i: number) {
   $("gcount").textContent = `${galleryIndex + 1} / ${GALLERY.length}`;
   $("gstats").innerHTML = e.stats.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("");
   $("gabil").innerHTML = e.abilities.map((a) => `<li>${a}</li>`).join("");
-  $("gnote").textContent = ["ship", "weapons", "fortress", "dreadnought"].includes(e.kind) ? "" : GALLERY_NOTE;
+  $("gnote").textContent = ["ship", "weapons", "fortress", "dreadnought", "warden"].includes(e.kind) ? "" : GALLERY_NOTE;
 }
 
 // --- HUD ---
@@ -327,7 +391,7 @@ function updateHud() {
   ($("distbest") as HTMLElement).style.display = "none";
   // Mini-boss health.
   $("bossbar").style.visibility = game.boss ? "visible" : "hidden";
-  if (game.boss) { $("bossname").textContent = game.boss.name; ($("bossfill") as HTMLElement).style.width = `${game.bossHealth * 100}%`; }
+  if (game.boss) { $("bossname").textContent = game.bossLabel; ($("bossfill") as HTMLElement).style.width = `${game.bossHealth * 100}%`; }
   // Save the record when the run ends.
   if ((game.done || game.over) && !saved) {
     saved = true;
@@ -375,8 +439,12 @@ function tick(dt: number) {
     game.update(dt, input);
     world?.update(dt, 120);
     updateGalleryMsg();
+  } else if (inRadio) {
+    if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); return; }
+    hangarKeys();
+    world?.update(dt, 120);
   } else if (inMenu) {
-    const n = LEVELS.length + 2;
+    const n = LEVELS.length + 3;
     if (input.hit("ArrowUp", "KeyW")) { menuIndex = (menuIndex + n - 1) % n; sfx("menuMove"); renderMenu(); previewTheme(); }
     if (input.hit("ArrowDown", "KeyS")) { menuIndex = (menuIndex + 1) % n; sfx("menuMove"); renderMenu(); previewTheme(); }
     if (input.hit("ArrowLeft", "KeyA")) { skill = Math.max(0, skill - 1); localStorage.setItem("neon.skill", String(skill)); sfx("menuMove"); renderMenu(); }
@@ -457,15 +525,33 @@ function simulate(seconds: number) {
   render();
 }
 
-// Audio needs a gesture first: the first key press or click starts it (and the menu music).
+// Audio needs a gesture first. Phones only count some events as one (a touch's pointerdown doesn't on
+// Android; iOS wants touchend / click), so every key, tap and click tries to start (or restart) it until it
+// runs. It also stops when the phone locks or the browser goes to the background; the next tap restarts it.
+let silentEl: HTMLAudioElement | null = null;
 const unlock = () => {
-  if (ctx) return;
+  const fresh = !ctx;
   initAudio();
-  ctx!.resume();
-  if (inMenu) { playMusic("Menu", 7); if (music) music.energy = 0.2; }
+  if (ctx!.state !== "running") ctx!.resume().catch(() => {});
+  // Older iPhones: a playing (silent) media element moves the page's sound off the ringer, past the silent switch.
+  if (!silentEl) {
+    silentEl = new Audio(silentWav());
+    silentEl.loop = true;
+    silentEl.play().catch(() => { silentEl = null; });
+  }
+  if (fresh && inMenu) { playMusic("Menu", 7); if (music) music.energy = 0.2; }
 };
-window.addEventListener("keydown", unlock);
-window.addEventListener("pointerdown", unlock);
+for (const ev of ["keydown", "pointerdown", "pointerup", "touchend", "click"]) window.addEventListener(ev, unlock, true);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); });
+/** A short silent WAV, made here. */
+function silentWav(): string {
+  const n = 4410, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
+  const str = (o: number, s: string) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 44100, true); v.setUint32(28, 88200, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  let bin = ""; for (const x of b) bin += String.fromCharCode(x);
+  return "data:audio/wav;base64," + btoa(bin);
+}
 
 // Tapping the game beside the shop closes it.
 $("stage").addEventListener("pointerdown", (e) => {

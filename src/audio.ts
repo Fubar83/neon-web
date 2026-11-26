@@ -11,6 +11,9 @@ let noiseBuf: AudioBuffer;
 /** Starts audio (browsers need a key press or click first). */
 export function initAudio(): AudioContext {
   if (ctx) return ctx;
+  // iPhone: play through the silent switch (Web Audio otherwise counts as "ringer" sound and stays mute).
+  const nav = navigator as Navigator & { audioSession?: { type: string } };
+  try { if (nav.audioSession) nav.audioSession.type = "playback"; } catch { /* older browsers */ }
   ctx = new AudioContext({ latencyHint: "interactive" });
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -10; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;

@@ -35,13 +35,13 @@ Play sideways (landscape), with two thumbs.
 ## How a run works
 
 - Each level is a run of about ten minutes to a finish line. Your result is your **score**; your best score per level and difficulty is saved and shown in the menu.
-- **The run is the same for everyone**: waves, bonuses, tunnels and mini-bosses all come from the level's seed and the distance flown, never from luck or from what you did. (Different difficulties are different runs.)
-- **Harder every minute** (a minute's worth of distance): more waves, tougher and faster-shooting enemies (enemy health also grows 25% per minute, mini-bosses 15%, to keep up with your upgrades), bigger groups, two groups at once later on, and a new enemy kind each minute.
+- **The run is the same for everyone**: waves, bonuses, tunnels and bosses all come from the level's seed and the distance flown, never from luck or from what you did. (Different difficulties are different runs.)
+- **Harder every minute** (a minute's worth of distance): more waves, tougher and faster-shooting enemies (enemy health also grows 25% per minute, bosses 15%, to keep up with your upgrades), bigger groups, two groups at once later on, and a new enemy kind each minute.
 - **A gentle start**: the first 3 minutes ease in (half as much on Hard): at first a third fewer waves, smaller drone lines, enemies shooting about half as often with slower shots, 25% softer, and 35% less damage to you, fading to normal by minute 3.
-- **Points**: simple enemies are worth little, tough ones more (and everything more each danger level). Destroy every enemy of a wave (splitter fragments too) for a WAVE CLEARED bonus of half its value; let one escape and it is gone. Mini-boss parts, cleared tunnels and the finish line (plus 5,000 per life left) score too.
+- **Points**: simple enemies are worth little, tough ones more (and everything more each danger level). Destroy every enemy of a wave (splitter fragments too) for a WAVE CLEARED bonus of half its value; let one escape and it is gone. Boss sections, cleared tunnels and the finish line (plus 5,000 per life left) score too.
 - **Bonuses**: every 4,000 points you are given the next upgrade in a fixed order, the same in every level (+1 gun, shield, faster fire, +25% damage, repair, +1 gun, faster fire, +1 life, ...). The top bar shows which one is next. They are earned by fighting, not by flying past enemies.
-- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step. The tube has solid walls you can't see through, covered in many thin, dim neon lines in its own colours and pattern, and few, gentle bends so you see far ahead. Obstacles stand out: thick red-hot blocks with a white-hot rim, brighter the closer they are, in many shapes (single blocks, pairs, ring gates, slaloms, three-blade gates, spirals, rows of pillars), mixed differently in every tunnel of a run (each run's tunnels are the same every time, so scores compare); and a **gap radar** ring around the view shows the blocks coming up (red, brighter as they get close) and your ship (cyan dot), so you can line up with the gap early. Tunnel speed builds up to a top speed, and there's no braking.
-- **Mini-bosses** (Fortress, Dreadnought) must be taken apart in order: turrets or engines first, then generators or turrets, then the core. Parts not yet up are shielded. They are tough (5x the health) and fire a lot; while one is here it's only the boss: the other enemies fly off, no waves come and the run holds still until it is destroyed (or leaves after 150 s).
+- **Tunnels** are mandatory, about one every 2.5 minutes, each harder than the last. A crash costs a life (you come back outside); the tunnel counts in full either way, so runs stay in step. The tube has solid walls you can't see through, covered in many thin, dim neon lines in its own colours and pattern, and few, gentle bends so you see far ahead. Obstacles stand out: thick red-hot blocks with a white-hot rim, brighter the closer they are, in twelve shapes (single blocks, pairs, ring gates, slaloms, three-blade gates, spirals, rows of pillars, half walls, crosses, double gates, two-gap rings, staggered pillars), in short groups that sometimes alternate two shapes, more kinds as a tunnel goes on, mixed differently in every tunnel of a run (each run's tunnels are the same every time, so scores compare); and a **gap radar** ring around the view shows the blocks coming up (red, brighter as they get close) and your ship (cyan dot), so you can line up with the gap early. Tunnel speed builds up to a top speed, and there's no braking.
+- **Bosses** (three per level, each level in its own order): Fortress, Dreadnought and Warden. Each has three big sections opened one at a time (the others are shielded and stop your shots), each with its own weapons: aimed volleys, sweeping fans, rings with a gap, slow spirals, homing missiles (shoot them down), mines that burst into rings, laser grids (find the free lane), laser sweeps that follow you, and the Dreadnought's ram. One attack at a time: a warning first (its name, the section flashing, red guide lines for lasers), then the attack, then a short rest to hit back. Destroying a section changes the boss's movement and weapons. While a boss is here no new enemies come and the run holds still (the distance doesn't count on); it leaves after 3 minutes.
 
 ## Levels
 
@@ -50,7 +50,7 @@ Play sideways (landscape), with two thumbs.
 
 ## Coins, shop and hangar
 
-Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, mini-boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). They drift down slowly and last about 16 seconds (blinking near the end); fly within reach and they come to you.
+Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). They drift down slowly and last about 16 seconds (blinking near the end); fly within reach and they come to you.
 
 **Shop** (P or Tab pauses a run; P, Esc or a tap on the game beside it goes back; it also opens by itself if you switch away or lock the phone): spend the run's coins. Purchases last for that run only. LEAVE RUN in the shop ends the run (it asks first).
 
@@ -85,12 +85,12 @@ One row per weapon and add-on: its base price, then its own stackable upgrades, 
 - **Add-ons**, up to 2, work by themselves: homing missiles (every 1.4 s, one per level), shield regen (a shield hit every 12 s, up to 2), wingman (a drone that fires with you), repair drone (mends the hull after 3 s without a hit).
 - **Colour** of the ship and its shots.
 
-The weapon level (1-5, raised by bonuses) powers every weapon, and so do the faster-fire and damage bonuses (faster fire also shortens cooldowns). Shielded mini-boss parts take no damage from any of them.
+The weapon level (1-5, raised by bonuses) powers every weapon, and so do the faster-fire and damage bonuses (faster fire also shortens cooldowns). Shielded boss parts take no damage from any of them.
 
 
 ## Gallery
 
-EXTRAS > GALLERY in the menu shows your ship, its weapons, every enemy and both mini-bosses live, one at a time, with their points, toughness and what they do (LEFT / RIGHT to browse, H for hit circles, ESC back). It uses the real game logic, so they behave exactly as in a run.
+EXTRAS > GALLERY in the menu shows your ship, its weapons, every enemy and all three bosses live, one at a time, with their points, toughness and what they do (LEFT / RIGHT to browse, H for hit circles, ESC back). It uses the real game logic, so they behave exactly as in a run.
 
 ## Code
 
