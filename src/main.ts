@@ -11,7 +11,7 @@ import { ADDONS, loadLoadout, saveLoadout, type Loadout } from "./loadout";
 import { Panel } from "./panel";
 import { hangarRows } from "./hangar";
 import { shopRows } from "./shop";
-import { Music, type MusicStyle } from "./music";
+import { Music, type MusicStyle, type MusicMode } from "./music";
 import { initAudio, ctx, setRoom, sfx, musicBus } from "./audio";
 import { Input } from "./util";
 import { TouchControls } from "./touch";
@@ -111,30 +111,30 @@ const RADIO: { style: MusicStyle; name: string; from: string; seed: number }[] =
   { style: "Wobble", name: "WOBBLE", from: "Radio only: half-time with a wobble bass.", seed: 55 },
   { style: "Breakbeat", name: "BREAKBEAT", from: "Radio only: fast broken beats.", seed: 66 },
 ];
-const MOODS = [
-  { name: "CALM", energy: 0.2, boost: 0, desc: "Intro and breaks: little or no drums." },
-  { name: "GROOVE", energy: 0.55, boost: 0, desc: "As at the start of a run." },
-  { name: "FULL", energy: 0.8, boost: 0, desc: "As later in a run." },
-  { name: "BOSS", energy: 0.95, boost: 0.1, desc: "As in a boss fight: full and a little faster." },
-  { name: "TUNNEL", energy: 1, boost: 0.06, desc: "As in a tunnel dive." },
+const MOODS: { name: string; mode: MusicMode; energy: number; desc: string }[] = [
+  { name: "CALM", mode: "calm", energy: 0.2, desc: "The calm version: pads, bells and a soft hat. Plays in the shop and after a game over." },
+  { name: "CRUISE", mode: "cruise", energy: 0.55, desc: "The main version, as at the start of a run." },
+  { name: "CRUISE FULL", mode: "cruise", energy: 0.85, desc: "The main version, as later in a run." },
+  { name: "BOSS", mode: "boss", energy: 1, desc: "The boss version: heavier drums, an octave bass, power chords, the melody low with a harmony, a bit faster." },
+  { name: "TUNNEL", mode: "tunnel", energy: 1, desc: "The tunnel version: four on the floor, fast hats, a rolling bass, a sweeping filter." },
 ];
 let radioStation = 0, radioTrack = 0, radioMood = 1, radioOn = false;
 function radioPlay() {
   initAudio();
   ctx?.resume();
   const st = RADIO[radioStation];
-  startMusic(st.style, radioTrack === 0 ? st.seed : st.seed + radioTrack * 7919);
+  startMusic(st.style, radioTrack === 0 ? st.seed : st.seed + radioTrack * 7919, MOODS[radioMood].mode);
   musicBus.gain.value = 0.5;  // the radio plays even when music is off for runs
   radioOn = true;
   radioMoodSet();
 }
-function radioMoodSet() { if (music) { music.energy = MOODS[radioMood].energy; music.tempoBoost = MOODS[radioMood].boost; } }
+function radioMoodSet() { if (music) { music.setMode(MOODS[radioMood].mode); music.energy = MOODS[radioMood].energy; music.tempoBoost = 0; } }
 const radio = new Panel($("hangar"), () => ({
   title: "RADIO", right: radioOn ? `${RADIO[radioStation].name} ${radioTrack + 1}` : "STOPPED",
   rows: [
     { title: "STATION", items: RADIO.map((s, i) => ({ name: s.name, desc: s.from, selected: radioOn && radioStation === i, pick: () => { radioStation = i; radioTrack = 0; radioPlay(); return true; } })) },
     { title: "SONG", items: [0, 1, 2, 3, 4, 5].map((k) => ({ name: String(k + 1), desc: k === 0 ? "The station's own song (the one its level plays)." : "Another song in the same style.", selected: radioOn && radioTrack === k, pick: () => { radioTrack = k; radioPlay(); return true; } })) },
-    { title: "MOOD", items: MOODS.map((m, i) => ({ name: m.name, desc: m.desc + " In a run the music follows the action by itself.", selected: radioMood === i, pick: () => { radioMood = i; radioMoodSet(); return true; } })) },
+    { title: "VERSION", items: MOODS.map((m, i) => ({ name: m.name, desc: m.desc + " Switching fades over into it, as in a run.", selected: radioMood === i, pick: () => { radioMood = i; radioMoodSet(); return true; } })) },
     { title: "PLAYER", items: [
       { name: radioOn ? "STOP" : "PLAY", desc: "Start or stop the radio.", pick: () => { if (radioOn) { music?.stop(); music = null; radioOn = false; } else radioPlay(); return true; } },
       { name: "NEXT", desc: "The next song (then the next station).", pick: () => { if (++radioTrack > 5) { radioTrack = 0; radioStation = (radioStation + 1) % RADIO.length; } radioPlay(); return true; } },
@@ -168,11 +168,12 @@ function setWorld(level: LevelDef) {
 }
 
 function playMusic(style: Parameters<typeof startMusic>[0], seed: number) { startMusic(style, seed); }
-function startMusic(style: ConstructorParameters<typeof Music>[0], seed: number) {
+function startMusic(style: ConstructorParameters<typeof Music>[0], seed: number, mode: MusicMode = "cruise") {
   music?.stop();
   music = null;
   if (!ctx) return;
   music = new Music(style, seed);
+  music.mode = mode;  // starts straight in this version (no fade)
   music.start();
   musicBus.gain.value = musicMuted ? 0 : 0.5;
 }
@@ -293,6 +294,16 @@ function openHangar() {
   $("hangar").style.display = "block";
   hangar.reset();
   hangar.render();
+}
+
+/** The run's music follows the game: calm in the shop, the confirm question and after a game over; the
+ *  boss and tunnel arrangements for those; otherwise the main one, harder as the run goes on. */
+function musicFollow() {
+  if (!music || !game) return;
+  const mode = paused || confirming || game.over ? "calm" : game.tunnel ? "tunnel" : game.boss ? "boss" : "cruise";
+  music.setMode(mode, mode === "boss" ? 2 : 3);
+  music.energy = game.done ? 1 : game.bigFight ? 0.95 : 0.55 + 0.25 * Math.min(game.difficulty, 1);
+  music.tempoBoost = mode === "cruise" && game.bigFight ? 0.05 : 0;
 }
 
 /** Pause a run: the shop comes up. */
@@ -456,7 +467,7 @@ function tick(dt: number) {
     if (confirming) {
       if (input.hit("Enter", "NumpadEnter", "KeyY", "LeaveYes")) { openMenu(); return; }
       if (input.hit("Escape", "KeyN", "LeaveNo")) setConfirm(false);
-      updateHud(); touch.update("hidden", null, 0); render(); return;
+      musicFollow(); updateHud(); touch.update("hidden", null, 0); render(); return;
     }
     if (input.hit("Escape")) {
       if (paused) setPaused(false);
@@ -466,14 +477,11 @@ function tick(dt: number) {
     }
     if (input.hit("LeaveRun")) { setConfirm(true); return; }
     if (input.hit("KeyP", "Tab") && !game.tunnel && !game.done && !game.over) setPaused(!paused);
-    if (paused) { hangarKeys(); updateHud(); touch.update("hidden", null, 0); render(); return; }
+    if (paused) { hangarKeys(); musicFollow(); updateHud(); touch.update("hidden", null, 0); render(); return; }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
     game.update(dt, input);
     if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
-    if (music) {
-      music.energy = game.over ? 0.25 : game.tunnel ? 1 : game.bigFight ? 0.95 : 0.55 + 0.25 * Math.min(game.difficulty, 1);
-      music.tempoBoost = game.bigFight ? 0.1 : game.tunnel ? 0.06 : 0;
-    }
+    musicFollow();
     updateHud();
     if (game.done || game.over) { endTimer += dt; if (endTimer > 7) openMenu(); }
   }

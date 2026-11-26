@@ -100,4 +100,4 @@ EXTRAS > GALLERY in the menu shows your ship, its weapons, every enemy and all t
 - `src/gallery.ts`: the gallery entries and their descriptions (the live demos are in game.ts).
 - `src/world.ts`: the scrolling neon scenery per theme.
 - `src/neon.ts`: thick glowing lines and outline shapes.
-- `src/music.ts`, `src/audio.ts`: music sequencer, sound effects, reverb.
+- `src/music.ts`, `src/audio.ts`: music sequencer, sound effects, reverb. Each song has four versions (calm, cruise, boss, tunnel) that fade into each other: calm in the shop and after a game over, boss in boss fights, tunnel in tunnels, cruise otherwise. The menu's RADIO plays every style, six songs each, in any version.

@@ -33,11 +33,23 @@ const MAJOR_PROGS = [[0, 4, 5, 3], [0, 3, 4, 3], [5, 3, 0, 4], [0, 5, 3, 4]];
 const ARPS = [[0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 4, 0, 2, 1, 3, 5, 4, 3, 2], [0, 0, 3, 0, 1, 1, 4, 1, 2, 2, 5, 2, 1, 1, 4, 3], [3, 2, 1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 3, 2, 1, 2]];
 
 type Section = "intro" | "build" | "drop" | "break";
+/** Arrangements of the same song for parts of the game; the music fades between them. */
+export type MusicMode = "calm" | "cruise" | "boss" | "tunnel";
+export const MODES: MusicMode[] = ["calm", "cruise", "boss", "tunnel"];
+/** Tempo change per mode (a fraction of the song's tempo). */
+const MODE_TEMPO: Record<MusicMode, number> = { calm: -0.04, cruise: 0, boss: 0.08, tunnel: 0.06 };
+/** One mode's mix: its level fades from `from` to `to` (time constant `tau`) from time `t0`. */
+interface ModeBus { out: GainNode; duck: GainNode; filt: BiquadFilterNode; from: number; to: number; t0: number; tau: number }
+interface StepCtx { t: number; s: number; dur: number; sec: Section; drop: boolean; build: boolean; brk: boolean; intro: boolean; chord: number; lb: number; lastBuildBar: boolean }
 const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 export class Music {
   energy = 0.6;
   tempoBoost = 0;
+  /** The arrangement playing (or fading in). */
+  mode: MusicMode = "cruise";
+  private buses = {} as Record<MusicMode, ModeBus>;
+  private bus!: ModeBus;
   private st: StyleDef;
   private scale: number[];
   private penta: number[];
@@ -56,7 +68,6 @@ export class Music {
   private nextTime = 0;
   private timer = 0;
   private out!: GainNode;
-  private duck!: GainNode;
   private sectionFilter!: BiquadFilterNode;
   private delay!: DelayNode;
   private delaySend!: GainNode;
@@ -129,7 +140,15 @@ export class Music {
     this.out = c.createGain(); this.out.gain.value = 0.9;
     this.sectionFilter = c.createBiquadFilter(); this.sectionFilter.type = "lowpass"; this.sectionFilter.frequency.value = 4000; this.sectionFilter.Q.value = 0.7;
     this.out.connect(this.sectionFilter); this.sectionFilter.connect(musicBus);
-    this.duck = c.createGain(); this.duck.connect(this.out);
+    // One bus per mode (each with its own side-chain and filter); only the playing mode's is open.
+    for (const m of MODES) {
+      const on = m === this.mode ? 1 : 0;
+      const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = m === "calm" ? 2000 : 20000; filt.Q.value = m === "tunnel" ? 2 : 0.7;
+      const out = c.createGain(); out.gain.value = on; out.connect(filt); filt.connect(this.out);
+      const duck = c.createGain(); duck.connect(out);
+      this.buses[m] = { out, duck, filt, from: on, to: on, t0: c.currentTime, tau: 1 };
+    }
+    this.bus = this.buses[this.mode];
     this.delay = c.createDelay(1); this.delay.delayTime.value = (60 / this.st.bpm / 4) * 3;
     const fb = c.createGain(); fb.gain.value = 0.38;
     this.delaySend = c.createGain(); this.delaySend.gain.value = 0.3;
@@ -143,6 +162,23 @@ export class Music {
     this.timer = window.setInterval(() => this.schedule(), 25);
   }
 
+  /** Fade to another arrangement of the same song (over about `fade` seconds). */
+  setMode(m: MusicMode, fade = 2.5) {
+    if (m === this.mode) return;
+    this.mode = m;
+    if (!ctx || !this.out) return;
+    const now = ctx.currentTime, tau = fade / 3;
+    for (const n of MODES) {
+      const b = this.buses[n];
+      b.from = this.mixAt(b, now); b.to = n === m ? 1 : 0; b.t0 = now; b.tau = tau;
+      b.out.gain.cancelScheduledValues(now);
+      b.out.gain.setValueAtTime(b.from, now);
+      b.out.gain.setTargetAtTime(b.to, now, tau);
+    }
+  }
+
+  private mixAt(b: ModeBus, t: number) { return t <= b.t0 ? b.from : b.to + (b.from - b.to) * Math.exp(-(t - b.t0) / b.tau); }
+
   stop() {
     window.clearInterval(this.timer);
     if (this.out && ctx) { this.out.gain.setTargetAtTime(0, ctx.currentTime, 0.2); const o = this.out; setTimeout(() => o.disconnect(), 1500); }
@@ -152,7 +188,7 @@ export class Music {
   private schedule() {
     if (!ctx) return;
     while (this.nextTime < ctx.currentTime + 0.15) {
-      this.curBpm += (this.st.bpm * (1 + this.tempoBoost) - this.curBpm) * 0.02;
+      this.curBpm += (this.st.bpm * (1 + this.tempoBoost + MODE_TEMPO[this.mode]) - this.curBpm) * 0.02;
       this.nextStep(this.nextTime);
       const stepLen = (60 / this.curBpm / 4) * (this.step % 2 === 0 ? 1 + this.st.swing : 1 - this.st.swing);
       this.nextTime += stepLen;
@@ -170,25 +206,41 @@ export class Music {
   }
 
   private nextStep(t: number) {
-    const st = this.st;
     const stepDur = 60 / this.curBpm / 4;
     if (++this.step >= 16) {
       this.step = 0;
       this.bar++;
-      let s = this.sectionFor(this.bar);
-      if (this.energy < 0.3 && (s === "drop" || s === "build")) s = Math.floor(this.bar / 8) % 2 ? "break" : "intro";
-      if (this.energy > 0.85 && (s === "intro" || s === "break")) { this.bar = this.bar < 32 ? 8 : 40; s = "build"; }
-      this.section = s;
-      const cut = s === "drop" ? 18000 : s === "build" ? 2500 + 15000 * ((this.bar % 8) / 8) : s === "break" ? 1800 : 4000;
+      // Calm keeps to the quiet sections; boss and tunnel stay in the build / drop part.
+      const energy = this.mode === "calm" ? Math.min(this.energy, 0.2) : this.mode === "cruise" ? this.energy : 1;
+      let sec = this.sectionFor(this.bar);
+      if (energy < 0.3 && (sec === "drop" || sec === "build")) sec = Math.floor(this.bar / 8) % 2 ? "break" : "intro";
+      if (energy > 0.85 && (sec === "intro" || sec === "break")) { this.bar = this.bar < 32 ? 8 : 40; sec = "build"; }
+      this.section = sec;
+      const cut = sec === "drop" ? 18000 : sec === "build" ? 2500 + 15000 * ((this.bar % 8) / 8) : sec === "break" ? 1800 : 4000;
       this.sectionFilter.frequency.setTargetAtTime(cut, t, 0.6);
-      const chord = this.prog[((this.bar % 8) + 8) % 8 % 4];
-      if (st.pad > 0 && !this.padStabs && (s !== "intro" || st.pad > 0.8)) this.pad(t, chord, stepDur * 16 - stepDur / 4, false);
     }
-    const s = this.step;
     const sec = this.section;
-    const drop = sec === "drop", build = sec === "build", brk = sec === "break", intro = sec === "intro";
-    const chord = this.prog[((this.bar % 8) + 8) % 8 % 4];
-    const lastBuildBar = build && this.bar % 8 === 7;
+    const k: StepCtx = {
+      t, s: this.step, dur: stepDur, sec, drop: sec === "drop", build: sec === "build", brk: sec === "break", intro: sec === "intro",
+      chord: this.prog[((this.bar % 8) + 8) % 8 % 4], lb: ((this.bar % 8) + 8) % 8,
+      lastBuildBar: sec === "build" && this.bar % 8 === 7,
+    };
+    // Every mode that can be heard plays its own arrangement of the song into its own bus.
+    for (const m of MODES) {
+      const bus = this.buses[m];
+      if (this.mixAt(bus, t) < 0.02) continue;
+      this.bus = bus;
+      if (m === "cruise") this.stepCruise(k);
+      else if (m === "boss") this.stepBoss(k);
+      else if (m === "tunnel") this.stepTunnel(k);
+      else this.stepCalm(k);
+    }
+  }
+
+  /** The song as it was written: the run's main arrangement. */
+  private stepCruise(k: StepCtx) {
+    const st = this.st, { t, s, dur: stepDur, drop, build, brk, intro, chord, lastBuildBar } = k;
+    if (s === 0 && st.pad > 0 && !this.padStabs && (!intro || st.pad > 0.8)) this.pad(t, chord, stepDur * 16 - stepDur / 4, false);
     if (this.padStabs && !intro && (s === 2 || s === 6 || s === 10 || s === 14 || (this.drumVar === 1 && s === 7))) this.pad(t, chord, stepDur, true);
 
     // Drums
@@ -226,8 +278,91 @@ export class Music {
     }
     // Lead (drops)
     if (drop) {
-      const b = ((this.bar % 8) + 8) % 8;
+      const b = k.lb;
       if (this.lead[b][s] >= 0) this.voice(t, this.lead[b][s], Math.max(1, this.leadLen[b][s]) * stepDur - stepDur / 3, st.lead, 0.13, 900 + 1800 * st.bright, 2500 * st.bright, 0.008, 0.25, 0.6, false, true);
+    }
+  }
+
+  /** Boss: heavier and a little faster - galloping kicks, a driving octave bass, power-chord stabs, the
+   *  melody low and doubled a fifth up, a fast arp, snare rolls into every other bar. */
+  private stepBoss(k: StepCtx) {
+    const st = this.st, { t, s, dur, drop, build, brk, chord, lastBuildBar } = k;
+    const root = this.note(chord, -1);
+    if (s === 0) this.pad(t, chord, dur * 16 - dur / 4, false, 0.035);
+    // Drums
+    if (!brk && !(lastBuildBar && s >= 8) && (s % 4 === 0 || s === 3 || s === 11 || (drop && s === 14))) this.kick(t);
+    if (s === 4 || s === 12) this.snare(t, 1, false);
+    if (drop && this.bar % 2 === 1 && s >= 13) this.snare(t, 0.35 + 0.15 * (s - 13), false);
+    if (lastBuildBar && s >= 8) this.snare(t, 0.3 + 0.06 * (s - 8), false);
+    this.hat(t, s % 2 === 0 ? 0.75 : 0.35, s % 4 === 2);
+    // Bass: an octave gallop (or the wobble, for wobble songs).
+    if (st.bass === Bass.Wobble && drop) { if (s === 0 || s === 8) this.bass(t, root, dur * 8, true); }
+    else if (!brk && (s % 2 === 0 || s % 4 === 3)) this.bass(t, s % 4 === 3 ? root + 12 : root, dur * 0.8, false, "saw");
+    // Power-chord stabs: root and fifth, low and gritty.
+    if ((drop || build) && (s === 0 || s === 6 || s === 10)) {
+      for (const n of [this.note(chord, 0), this.note(chord, 0) + 7]) this.voice(t, n, dur * 1.5, "saw", 0.07, 500, 2200, 0.003, 0.15, 0.3, true, false);
+    }
+    // Fast arp, every step, an octave higher every other bar.
+    if (!brk) {
+      const idx = this.arp[s];
+      this.voice(t, this.note(chord + 2 * (idx % 3), 1 + Math.floor(idx / 3) + (this.bar % 2)), dur * 0.5, "square", 0.06, 900 + 1500 * st.bright, 2500, 0.002, 0.07, 0, true, true);
+    }
+    // The melody: an octave down, doubled a fifth above (in builds too, quieter).
+    if (drop || build) {
+      const n = this.lead[k.lb][s];
+      if (n >= 0) {
+        const len = Math.max(1, this.leadLen[k.lb][s]) * dur - dur / 3, v = drop ? 0.12 : 0.06;
+        this.voice(t, n - 12, len, "saw", v, 700 + 1400 * st.bright, 2600, 0.006, 0.2, 0.7, false, true);
+        this.voice(t, n - 5, len, "square", v * 0.5, 900, 1800, 0.006, 0.2, 0.6, false, false);
+      }
+    }
+  }
+
+  /** Tunnel: a straight, driving run - four on the floor, sixteenth hats, a rolling offbeat bass, a two-
+   *  octave arp, the melody in square waves, and a filter that opens over every four bars. */
+  private stepTunnel(k: StepCtx) {
+    const st = this.st, { t, s, dur, drop, build, chord, lastBuildBar } = k;
+    const root = this.note(chord, -1);
+    if (s === 0) {
+      const f = this.bus.filt.frequency, q = ((this.bar % 4) + 4) % 4;
+      f.cancelScheduledValues(t);
+      f.setTargetAtTime(1200 * Math.pow(2.4, q), t, dur * 6);
+      if (st.pad > 0) this.pad(t, chord, dur * 4, true, 0.04);
+    }
+    if (s === 8 && st.pad > 0) this.pad(t, chord, dur * 4, true, 0.03);
+    // Drums
+    if (s % 4 === 0 && !(lastBuildBar && s >= 8)) this.kick(t);
+    if (s === 4 || s === 12) this.snare(t, 0.9, true);
+    this.hat(t, s % 4 === 2 ? 0.8 : s % 2 ? 0.3 : 0.5, s % 4 === 2);
+    if (lastBuildBar && s >= 8) this.snare(t, 0.3 + 0.07 * (s - 8), true);
+    // Bass: rolling offbeats, the fifth at the end of each half bar.
+    if (s % 4 !== 0) this.bass(t, s % 8 === 7 ? this.note(chord + 4, -1) : root + (s % 4 === 2 ? 12 : 0), dur * 0.85, false, st.bass === Bass.Bounce ? "square" : "saw");
+    // Arp across two octaves, every step.
+    const idx = this.arp[s];
+    this.voice(t, this.note(chord + 2 * (idx % 3), 1 + Math.floor(idx / 3)) + (s % 2 ? 12 : 0), dur * 0.45, "pulse", 0.07, 1200 + 2000 * st.bright, 3500, 0.002, 0.06, 0, true, true);
+    // Melody in drops (an octave up on the first beat of each bar), the first half of it in builds.
+    if (drop || (build && s < 8)) {
+      const n = this.lead[k.lb][s];
+      if (n >= 0) this.voice(t, n + (s === 0 ? 12 : 0), Math.max(1, this.leadLen[k.lb][s]) * dur - dur / 3, "square", drop ? 0.1 : 0.06, 1100 + 1500 * st.bright, 2500, 0.005, 0.2, 0.55, false, true);
+    }
+  }
+
+  /** Calm (menu, shop, game over): no drums but a soft hat, long pads, a held bass, slow bells for the arp
+   *  and the melody's main notes, everything behind a soft filter. */
+  private stepCalm(k: StepCtx) {
+    const st = this.st, { t, s, dur, intro, chord } = k;
+    if (s === 0) {
+      this.pad(t, chord, dur * 16 - dur / 4, false, 0.05);
+      this.bass(t, this.note(chord, -1), dur * 16, false, "sine");
+    }
+    if (!intro && s % 4 === 2) this.hat(t, 0.2, true);
+    if (s % 2 === 0) {
+      const idx = this.arp[s];
+      this.voice(t, this.note(chord + 2 * (idx % 3), 1 + Math.floor(idx / 3)), dur * 1.5, "bell", 0.05, 1600, 800, 0.003, 0.4, 0, false, true);
+    }
+    if (s % 4 === 0 && this.bar % 2 === 1) {
+      const n = this.lead[k.lb][s];
+      if (n >= 0) this.voice(t, n + 12, dur * 3, "bell", 0.07, 2200 + 1000 * st.bright, 800, 0.004, 0.6, 0.2, false, true);
     }
   }
 
@@ -237,22 +372,23 @@ export class Music {
     const o = c.createOscillator(); o.type = "sine";
     o.frequency.setValueAtTime(196, t); o.frequency.exponentialRampToValueAtTime(46, t + 0.12);
     const g = c.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-    o.connect(g); g.connect(this.out); o.start(t); o.stop(t + 0.5);
+    o.connect(g); g.connect(this.bus.out); o.start(t); o.stop(t + 0.5);
     // Side-chain: everything on the duck bus dips with each kick.
-    this.duck.gain.cancelScheduledValues(t);
-    this.duck.gain.setValueAtTime(0.4, t);
-    this.duck.gain.linearRampToValueAtTime(1, t + 0.22);
+    const duck = this.bus.duck.gain;
+    duck.cancelScheduledValues(t);
+    duck.setValueAtTime(0.4, t);
+    duck.linearRampToValueAtTime(1, t + 0.22);
   }
   private snare(t: number, v: number, clap: boolean) {
     const c = ctx!;
     const n = noiseSource();
     const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = clap ? 1500 : 2200; f.Q.value = 0.8;
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * v, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + (clap ? 0.2 : 0.25));
-    n.connect(f); f.connect(g); g.connect(this.out); n.start(t); n.stop(t + 0.3);
+    n.connect(f); f.connect(g); g.connect(this.bus.out); n.start(t); n.stop(t + 0.3);
     if (!clap) {
       const o = c.createOscillator(); o.frequency.value = 185;
       const og = c.createGain(); og.gain.setValueAtTime(0.35 * v, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-      o.connect(og); og.connect(this.out); o.start(t); o.stop(t + 0.15);
+      o.connect(og); og.connect(this.bus.out); o.start(t); o.stop(t + 0.15);
     }
   }
   private hat(t: number, v: number, open: boolean) {
@@ -261,7 +397,7 @@ export class Music {
     const f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 7500;
     const g = c.createGain(); const d = open ? 0.22 : 0.045;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16 * v, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    n.connect(f); f.connect(g); g.connect(this.out); n.start(t); n.stop(t + d + 0.02);
+    n.connect(f); f.connect(g); g.connect(this.bus.out); n.start(t); n.stop(t + d + 0.02);
   }
   private osc(type: Wave, f: number): OscillatorNode {
     const o = ctx!.createOscillator();
@@ -270,10 +406,10 @@ export class Music {
     o.frequency.value = f;
     return o;
   }
-  private bass(t: number, midi: number, dur: number, wobble = false) {
+  private bass(t: number, midi: number, dur: number, wobble = false, waveAs?: Wave) {
     const c = ctx!, st = this.st;
     const f = hz(midi);
-    const wave: Wave = st.bass === Bass.Wobble ? "saw" : st.bass === Bass.Bounce ? "square" : this.sineBass ? "sine" : "saw";
+    const wave: Wave = waveAs ?? st.bass === Bass.Wobble ? "saw" : st.bass === Bass.Bounce ? "square" : this.sineBass ? "sine" : "saw";
     const o = this.osc(wave, f);
     const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.Q.value = wobble ? 8 : 1.5;
     const base = wobble ? 180 : 260 + 300 * st.bright;
@@ -282,7 +418,7 @@ export class Music {
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.004); g.gain.setTargetAtTime(0.24, t + 0.01, 0.05);
     g.gain.setTargetAtTime(0.0001, t + dur, 0.02);
-    o.connect(filt); filt.connect(g); g.connect(this.duck);
+    o.connect(filt); filt.connect(g); g.connect(this.bus.duck);
     if (wobble) {
       const lfo = c.createOscillator(); lfo.frequency.value = (this.curBpm / 60) * (this.bar % 4 === 3 ? 3 : 2);
       const lg = c.createGain(); lg.gain.value = 1400;
@@ -291,16 +427,16 @@ export class Music {
     }
     o.start(t); o.stop(t + dur + 0.15);
   }
-  private pad(t: number, chord: number, dur: number, stab: boolean) {
+  private pad(t: number, chord: number, dur: number, stab: boolean, level?: number) {
     const c = ctx!;
     for (let k = 0; k < 3; k++) {
       const f = hz(this.note(chord + 2 * k, 0));
       const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 600 + 900 * this.st.bright;
       const g = c.createGain();
-      const peak = 0.05 * this.st.pad, a = stab ? 0.004 : 0.35, r = stab ? 0.08 : 0.6;
+      const peak = level ?? 0.05 * this.st.pad, a = stab ? 0.004 : 0.35, r = stab ? 0.08 : 0.6;
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.setTargetAtTime(0.0001, t + dur, r / 3);
       for (const d of [1, 1.009]) { const o = this.osc("saw", f * d); o.connect(filt); o.start(t); o.stop(t + dur + r + 0.2); }
-      filt.connect(g); g.connect(this.duck);
+      filt.connect(g); g.connect(this.bus.duck);
     }
   }
   private voice(t: number, midi: number, dur: number, wave: Wave, peak: number, cutoff: number, envAmt: number, attack: number, decay: number, sustain: number, ducked: boolean, echo: boolean) {
@@ -322,7 +458,7 @@ export class Music {
       if (wave === "saw") { const o2 = this.osc("saw", f * 1.006); o2.connect(filt); o2.start(t); o2.stop(t + dur + 0.4); }
     }
     filt.connect(g);
-    g.connect(ducked ? this.duck : this.out);
+    g.connect(ducked ? this.bus.duck : this.bus.out);
     if (echo) g.connect(this.delaySend);
   }
 }
