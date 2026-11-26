@@ -1,6 +1,7 @@
 // The level music: a sequencer scheduling Web Audio voices a little ahead of time. Same design as the
 // Unreal version: styles (tempo, drums, bass, sounds), well-known scales, classic progressions, a seeded
-// melody that keeps to chord tones and the pentatonic, and intro / build / drop / break sections that
+// tracker-style melody (bar rhythms with rests, contours like runs, arpeggios, pedal notes and octave
+// jumps, vibrato, slides and chip chord arps) that keeps to chord tones, and intro / build / drop / break sections that
 // energy (0..1) pushes around. A tempo boost eases in for big fights.
 // Each song also runs in 8-bar blocks A B A C: B has its own chords, melody, bass line, arp and lead
 // sound; C answers A with a new second half, the lead doubled and busier drums. Fills, a percussion
@@ -12,27 +13,29 @@ export type MusicStyle = "House" | "Chiptune" | "Synthwave" | "Deep" | "Electro"
   | "Trance" | "Eurodance" | "Techno" | "FutureBass" | "Rave" | "Garage";
 
 type Wave = "saw" | "square" | "pulse" | "sine" | "bell" | "tri" | "supersaw" | "fm" | "organ";
-const enum Drums { Four, Half, Break, Chip, Rock, Soft }
-const enum Bass { Offbeat, Rolling, Wobble, Octave, Sustain, Bounce }
-interface StyleDef { bpm: number; root: number; scale: number; drums: Drums; bass: Bass; lead: Wave; arp: Wave; arpEvery: number; swing: number; pad: number; bright: number }
+const enum Drums { Four, Half, Break, Chip, Rock, Soft, Garage, Trap, Techno }
+const enum Bass { Offbeat, Rolling, Wobble, Octave, Sustain, Bounce, Gallop, Reese }
+interface StyleDef { bpm: number; root: number; scale: number; drums: Drums; bass: Bass; lead: Wave; arp: Wave; arpEvery: number; swing: number; pad: number; bright: number;
+  /** Melody density (1 = normal), chord stabs instead of held pads, and seventh chords in the pads. */
+  dens?: number; stab?: boolean; sev?: boolean }
 
 const STYLES: Record<MusicStyle, StyleDef> = {
   House:     { bpm: 128, root: 45, scale: 0, drums: Drums.Four,  bass: Bass.Offbeat, lead: "saw",    arp: "square", arpEvery: 1, swing: 0,    pad: 0.5, bright: 0.8 },
   Chiptune:  { bpm: 145, root: 48, scale: 0, drums: Drums.Chip,  bass: Bass.Bounce,  lead: "square", arp: "pulse",  arpEvery: 1, swing: 0,    pad: 0,   bright: 1 },
   Synthwave: { bpm: 122, root: 50, scale: 0, drums: Drums.Rock,  bass: Bass.Octave,  lead: "saw",    arp: "saw",    arpEvery: 1, swing: 0,    pad: 0.9, bright: 0.6 },
-  Deep:      { bpm: 124, root: 41, scale: 2, drums: Drums.Soft,  bass: Bass.Offbeat, lead: "bell",   arp: "bell",   arpEvery: 2, swing: 0.08, pad: 0.6, bright: 0.5 },
+  Deep:      { bpm: 124, root: 41, scale: 2, drums: Drums.Soft,  bass: Bass.Offbeat, lead: "bell",   arp: "bell",   arpEvery: 2, swing: 0.08, pad: 0.6, bright: 0.5, sev: true, dens: 0.8 },
   Electro:   { bpm: 132, root: 43, scale: 0, drums: Drums.Four,  bass: Bass.Rolling, lead: "square", arp: "saw",    arpEvery: 1, swing: 0,    pad: 0.3, bright: 0.9 },
   Crystal:   { bpm: 138, root: 49, scale: 1, drums: Drums.Four,  bass: Bass.Offbeat, lead: "bell",   arp: "bell",   arpEvery: 1, swing: 0,    pad: 0.5, bright: 1 },
-  Space:     { bpm: 126, root: 38, scale: 2, drums: Drums.Half,  bass: Bass.Sustain, lead: "sine",   arp: "tri",    arpEvery: 2, swing: 0,    pad: 1,   bright: 0.5 },
+  Space:     { bpm: 126, root: 38, scale: 2, drums: Drums.Half,  bass: Bass.Sustain, lead: "sine",   arp: "tri",    arpEvery: 2, swing: 0,    pad: 1,   bright: 0.5, sev: true, dens: 0.7 },
   Wobble:    { bpm: 140, root: 41, scale: 0, drums: Drums.Half,  bass: Bass.Wobble,  lead: "saw",    arp: "square", arpEvery: 2, swing: 0,    pad: 0.4, bright: 0.8 },
   Bounce:    { bpm: 132, root: 48, scale: 3, drums: Drums.Four,  bass: Bass.Bounce,  lead: "pulse",  arp: "square", arpEvery: 1, swing: 0.1,  pad: 0.4, bright: 0.9 },
-  Breakbeat: { bpm: 172, root: 45, scale: 0, drums: Drums.Break, bass: Bass.Rolling, lead: "square", arp: "pulse",  arpEvery: 1, swing: 0,    pad: 0.3, bright: 0.9 },
-  Trance:     { bpm: 138, root: 45, scale: 1, drums: Drums.Four,  bass: Bass.Rolling, lead: "supersaw", arp: "pulse", arpEvery: 1, swing: 0,  pad: 0.8, bright: 0.9 },
-  Eurodance:  { bpm: 140, root: 47, scale: 1, drums: Drums.Four,  bass: Bass.Octave,  lead: "pulse",  arp: "fm",     arpEvery: 1, swing: 0,    pad: 0.5, bright: 1 },
-  Techno:     { bpm: 130, root: 40, scale: 0, drums: Drums.Four,  bass: Bass.Rolling, lead: "fm",     arp: "saw",    arpEvery: 1, swing: 0,    pad: 0.2, bright: 0.7 },
-  FutureBass: { bpm: 150, root: 48, scale: 3, drums: Drums.Half,  bass: Bass.Sustain, lead: "supersaw", arp: "bell", arpEvery: 2, swing: 0.06, pad: 0.9, bright: 0.9 },
-  Rave:       { bpm: 165, root: 50, scale: 4, drums: Drums.Four,  bass: Bass.Bounce,  lead: "organ",  arp: "square", arpEvery: 1, swing: 0,    pad: 0.4, bright: 1 },
-  Garage:     { bpm: 132, root: 43, scale: 2, drums: Drums.Break, bass: Bass.Offbeat, lead: "bell",   arp: "fm",     arpEvery: 2, swing: 0.14, pad: 0.6, bright: 0.8 },
+  Breakbeat: { bpm: 172, root: 45, scale: 0, drums: Drums.Break, bass: Bass.Reese,   lead: "square", arp: "pulse",  arpEvery: 1, swing: 0,    pad: 0.3, bright: 0.9 },
+  Trance:     { bpm: 138, root: 45, scale: 1, drums: Drums.Four,   bass: Bass.Gallop,  lead: "supersaw", arp: "pulse", arpEvery: 1, swing: 0,  pad: 0.8, bright: 0.9, dens: 1.25 },
+  Eurodance:  { bpm: 140, root: 47, scale: 1, drums: Drums.Four,   bass: Bass.Octave,  lead: "pulse",  arp: "fm",     arpEvery: 2, swing: 0,    pad: 0.5, bright: 1, stab: true },
+  Techno:     { bpm: 130, root: 40, scale: 0, drums: Drums.Techno, bass: Bass.Rolling, lead: "fm",     arp: "saw",    arpEvery: 1, swing: 0,    pad: 0.2, bright: 0.7, dens: 0.55 },
+  FutureBass: { bpm: 150, root: 48, scale: 3, drums: Drums.Trap,   bass: Bass.Reese,   lead: "supersaw", arp: "bell", arpEvery: 2, swing: 0,  pad: 0.9, bright: 0.9, stab: true, sev: true, dens: 0.85 },
+  Rave:       { bpm: 165, root: 50, scale: 4, drums: Drums.Four,   bass: Bass.Bounce,  lead: "organ",  arp: "square", arpEvery: 1, swing: 0,    pad: 0.4, bright: 1, stab: true, dens: 1.3 },
+  Garage:     { bpm: 132, root: 43, scale: 2, drums: Drums.Garage, bass: Bass.Reese,   lead: "bell",   arp: "fm",     arpEvery: 2, swing: 0.14, pad: 0.6, bright: 0.8, sev: true, stab: true },
   Menu:      { bpm: 118, root: 45, scale: 0, drums: Drums.Soft,  bass: Bass.Sustain, lead: "bell",   arp: "bell",   arpEvery: 2, swing: 0,    pad: 1,   bright: 0.4 },
 };
 
@@ -46,7 +49,25 @@ const MAJOR_PROGS = [[0, 4, 5, 3], [0, 3, 4, 3], [5, 3, 0, 4], [0, 5, 3, 4]];
 const HARMONIC_PROGS = [[0, 5, 3, 4], [0, 3, 4, 0], [0, 5, 4, 4], [5, 3, 0, 4]];
 const MIXO_PROGS = [[0, 6, 3, 0], [0, 3, 6, 3], [0, 6, 3, 4], [3, 6, 0, 0]];
 const progsFor = (sc: number) => [MINOR_PROGS, HARMONIC_PROGS, DORIAN_PROGS, MAJOR_PROGS, MIXO_PROGS][sc];
-const ARPS = [[0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 4, 0, 2, 1, 3, 5, 4, 3, 2], [0, 0, 3, 0, 1, 1, 4, 1, 2, 2, 5, 2, 1, 1, 4, 3], [3, 2, 1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 3, 2, 1, 2]];
+const ARPS = [[0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 4, 0, 2, 1, 3, 5, 4, 3, 2], [0, 0, 3, 0, 1, 1, 4, 1, 2, 2, 5, 2, 1, 1, 4, 3], [3, 2, 1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 3, 2, 1, 2],
+  [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5], [0, 2, 4, 2, 1, 3, 5, 3, 0, 2, 4, 2, 1, 3, 5, 3], [0, 3, 1, 4, 2, 5, 3, 4, 0, 3, 1, 4, 2, 5, 4, 3], [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 2, 2, 1, 1]];
+
+/** Tracker-style bar rhythms: note lengths in steps (16 to the bar); a negative number is a rest. */
+const RHYTHMS = [
+  [4, 4, 4, 4], [3, 3, 2, 3, 3, 2], [2, 2, 4, 2, 2, 4], [6, 2, 6, 2], [1, 1, 2, 4, 1, 1, 2, 4], [8, 4, 4],
+  [2, 1, 1, 2, 2, 4, 4], [3, 3, 3, 3, 4], [1, 1, 1, 1, 4, 4, 2, 2], [4, 2, 2, 8], [2, 2, 2, 2, 8], [-2, 2, 4, -2, 2, 4],
+  [3, 1, 3, 1, 4, 4], [1, 1, 1, 1, 1, 1, 1, 1, 8], [-4, 2, 2, 2, 2, 4], [6, 6, 4], [2, -1, 1, 2, 2, -2, 2, 4],
+  [3, 3, 2, 2, 2, 4], [1, 1, 2, 1, 1, 2, 1, 1, 2, 4], [-1, 1, 1, 1, 4, -1, 1, 1, 1, 4], [12, 2, 2], [2, 2, 1, 1, 1, 1, 2, 2, 4],
+];
+/** The rhythm of a phrase's last bar, which ends on the home note. */
+const ENDINGS = [[4, 4, 8], [2, 2, 12], [3, 3, 10], [16], [2, 1, 1, 12]];
+/** How a bar's notes move: stepwise, up and down the chord, scale runs, around a held high note,
+ *  repeated notes, or octave jumps. */
+type Contour = "walk" | "arp" | "run" | "pedal" | "repeat" | "leap";
+const CONTOURS: Contour[] = ["walk", "arp", "run", "pedal", "repeat", "leap"];
+/** Lead effects per note: vibrato, a slide from the previous note, a fast chord arpeggio (chiptune). */
+const FX_VIB = 1, FX_GLIDE = 2, FX_ARP = 4;
+interface VoiceFx { vib?: boolean; from?: number; arp?: number[] }
 
 type Section = "intro" | "build" | "drop" | "break";
 /** Arrangements of the same song for parts of the game; the music fades between them. */
@@ -74,7 +95,6 @@ export class Music {
   private bus!: ModeBus;
   private st: StyleDef;
   private scale: number[];
-  private penta: number[];
   private prog: number[];
   private arp: number[];
   private lead: number[][] = [];
@@ -109,6 +129,11 @@ export class Music {
   private fill: number;
   /** An extra kick step for C blocks. */
   private kickExtra: number;
+  /** Lead effects (FX_ bits) and the note each one slides from; the song's effect choices and note gate. */
+  private leadFx: number[][] = [];
+  private leadFrom: number[][] = [];
+  private gate: number;
+  private collect: OscillatorNode[] | null = null;
   /** Hook songs repeat bar 1's rhythm and shape in bar 3, moved to the new chord (a sequence). */
   private hook: boolean;
 
@@ -120,18 +145,17 @@ export class Music {
     this.st.root += r.int(-3, 3);
     const sc = this.st.scale;
     this.scale = SCALES[sc];
-    this.penta = sc >= 3 ? [0, 1, 2, 4, 5] : sc === 1 ? [0, 2, 3, 4] : [0, 2, 3, 4, 6];
     this.prog = r.pick(progsFor(sc));
     this.drumVar = r.int(0, 2);
     this.leadOct = r.chance(0.3) ? 2 : 1;
-    this.padStabs = this.st.pad > 0 && this.st.pad < 0.8 && r.chance(0.4);
+    this.padStabs = this.st.stab || (this.st.pad > 0 && this.st.pad < 0.8 && r.chance(0.4));
     this.arpEvery = r.chance(0.3) ? (this.st.arpEvery === 1 ? 2 : 1) : this.st.arpEvery;
     if (r.chance(0.35)) this.st.lead = r.pick(["saw", "square", "pulse", "bell"] as const);
     if (r.chance(0.2) && this.st.swing === 0) this.st.swing = 0.06;
     this.arp = r.pick(ARPS);
     this.curBpm = this.st.bpm;
     this.hook = r.chance(0.7);
-    this.writeMelody(r);
+    this.writePhrase(r, this.prog, 0, this.leadOct, { repeat: true });
     // The B block: other chords, a new melody (more off-beat), other arp, bass and lead sound.
     const progs = progsFor(sc);
     this.prog2 = r.pick(progs.filter((q) => q !== this.prog));
@@ -145,10 +169,42 @@ export class Music {
     this.percHits = r.pick(PERC_HITS);
     this.fill = r.int(0, 2);
     this.kickExtra = r.pick([6, 10, 7]);
-    this.writePhrase(r, this.prog2, 8, (s) => (s % 4 === 0 ? 0.5 : s % 2 === 0 ? 0.35 : 0.4), this.leadOct + (r.chance(0.4) ? -1 : 0));
+    this.writePhrase(r, this.prog2, 8, this.leadOct + (r.chance(0.4) ? -1 : 0), { repeat: this.hook });
     // The C block: A's first half, then a new, busier second half.
     for (let b = 0; b < 8; b++) { this.lead[16 + b] = [...this.lead[b]]; this.leadLen[16 + b] = [...this.leadLen[b]]; }
-    this.writePhrase(r, this.prog, 16, (s) => (s % 4 === 0 ? 0.75 : s % 2 === 0 ? 0.6 : 0.3), this.leadOct, [2, 3, 6, 7]);
+    this.writePhrase(r, this.prog, 16, this.leadOct, { only: [2, 3, 6, 7] });
+    this.tidy();
+    this.gate = r.pick([0.92, 0.8, 0.55]);
+    this.writeFx(r, style === "Chiptune");
+  }
+
+  /** The chord's three notes as pitch classes (root first). */
+  private chordPcs(chord: number) { return [0, 1, 2].map((k) => this.note(chord + 2 * k, 0) % 12); }
+
+  /** Keeps the melody in tune with the bass and chords: a note off the chord may only be a short passing
+   *  note (two steps at most), never a tritone from the bass or a semitone above it; anything else moves
+   *  to the nearest chord note. */
+  private tidy() {
+    for (let b = 0; b < this.lead.length; b++) {
+      const pcs = this.chordPcs((b >= 8 && b < 16 ? this.prog2 : this.prog)[b % 4]), rootPc = pcs[0];
+      const lead = this.lead[b], len = this.leadLen[b];
+      for (let s = 0; s < 16; s++) {
+        const n = lead[s];
+        if (n < 0 || pcs.includes(n % 12)) continue;
+        const iv = (n % 12 - rootPc + 12) % 12;
+        if (len[s] <= 2 && iv !== 6 && iv !== 1) continue;
+        let best = n, bd = 99;
+        for (let d = -6; d <= 6; d++) if (pcs.includes((((n + d) % 12) + 12) % 12) && (Math.abs(d) < bd || (Math.abs(d) === bd && d < 0))) { best = n + d; bd = Math.abs(d); }
+        lead[s] = best;
+      }
+    }
+  }
+
+  /** The nearest chord note at least a minor third below `n` (for harmonies under the melody). */
+  private chordBelow(n: number, chord: number) {
+    const pcs = this.chordPcs(chord);
+    for (let d = 3; d <= 9; d++) if (pcs.includes((((n - d) % 12) + 12) % 12)) return n - d;
+    return n - 12;
   }
 
   /** Bar `src` moved `delta` scale steps (up or down an octave, whichever stays nearer). */
@@ -161,34 +217,66 @@ export class Music {
     return Math.abs(avg(up) - avg(src)) <= Math.abs(avg(down) - avg(src)) ? up : down;
   }
 
-  /** Writes a phrase of eight bars into the melody from bar `at`: chord tones on strong beats, the
-   *  pentatonic between, mostly small steps. `only` limits it to some of the bars. */
-  private writePhrase(r: Rng, prog: number[], at: number, prob: (s: number) => number, oct: number, only?: number[]) {
+  /** Writes eight bars of melody from bar `at`, tracker style: each bar takes a rhythm (note lengths and
+   *  rests) and a contour (how the notes move); bars 1 and 3 answer bars 0 and 2 with their own. The last
+   *  bar ends on the home note. `repeat`: bars 4-6 repeat 0-2. `only`: write just these bars (busier). */
+  private writePhrase(r: Rng, prog: number[], at: number, oct: number, o: { repeat?: boolean; only?: number[] } = {}) {
+    const dens = this.st.dens ?? 1;
+    const count = (q: number[]) => q.filter((x) => x > 0).length;
+    let pool = RHYTHMS.filter((q) => (o.only ? count(q) >= 5 : dens >= 1.2 ? count(q) >= 5 : dens <= 0.8 ? count(q) <= 5 : true));
+    if (pool.length < 2) pool = RHYTHMS;
+    const rA = r.pick(pool), rB = r.chance(0.35) ? rA : r.pick(pool.filter((q) => q !== rA));
+    const cA = r.pick(CONTOURS), cB = r.chance(0.5) ? cA : r.pick(CONTOURS);
+    const end = r.pick(ENDINGS);
+    const state = { prev: this.note(prog[0], oct), dir: r.chance(0.5) ? 1 : -1, i: 0 };
     for (let b = 0; b < 8; b++) {
-      if (only && !only.includes(b)) continue;
-      if (!only && this.hook && b === 2) { this.lead[at + 2] = this.seqBar(this.lead[at], prog[2] - prog[0]); this.leadLen[at + 2] = [...this.leadLen[at]]; continue; }
-      if (!only && this.hook && b >= 4 && b < 7) { this.lead[at + b] = [...this.lead[at + b - 4]]; this.leadLen[at + b] = [...this.leadLen[at + b - 4]]; continue; }
-      const lead = new Array(16).fill(-1), len = new Array(16).fill(0);
-      const chord = prog[b % 4];
-      let last = -1, prev = this.note(chord, oct);
-      for (let s = 0; s < 16; s++) {
-        if (r.next() < prob(s) || (b === 7 && s === 0)) {
-          let cands: number[] = [];
-          for (let k = 0; k < 3; k++) for (let o = 0; o < 2; o++) cands.push(this.note(chord + 2 * k, oct + o - (k > 0 ? 1 : 0)));
-          if (s % 4 !== 0) for (const pd of this.penta) for (let o = 0; o < 2; o++) cands.push(this.note(pd, oct + o - 1));
-          const home = this.note(0, oct);
-          cands = cands.filter((n) => Math.abs(n - home) <= 14);
-          let pick = r.pick(cands);
-          if (r.chance(0.65)) { cands.sort((a, c) => Math.abs(a - prev) - Math.abs(c - prev)); pick = cands[Math.min(r.int(1, 3), cands.length - 1)]; }
-          if (b === 7 && s === 0) pick = home;
-          lead[s] = pick; prev = pick;
-          if (last >= 0) len[last] = s - last;
-          last = s;
-        }
-      }
-      if (last >= 0) len[last] = 16 - last;
-      this.lead[at + b] = lead; this.leadLen[at + b] = len;
+      if (o.only && !o.only.includes(b)) continue;
+      if (!o.only && this.hook && b === 2) { this.lead[at + 2] = this.seqBar(this.lead[at], prog[2] - prog[0]); this.leadLen[at + 2] = [...this.leadLen[at]]; continue; }
+      if (!o.only && o.repeat && b >= 4 && b < 7) { this.lead[at + b] = [...this.lead[at + b - 4]]; this.leadLen[at + b] = [...this.leadLen[at + b - 4]]; continue; }
+      const rh = b === 7 ? end : b % 2 === 0 ? rA : rB;
+      const bar = this.writeBar(r, prog[b % 4], oct, rh, b % 2 === 0 ? cA : cB, state, b === 7);
+      this.lead[at + b] = bar.lead; this.leadLen[at + b] = bar.len;
     }
+  }
+
+  /** One bar of melody over `chord` from a rhythm and a contour. Long notes and notes on the beat are chord
+   *  notes; short ones may pass through the scale. */
+  private writeBar(r: Rng, chord: number, oct: number, rhythm: number[], contour: Contour, st: { prev: number; dir: number; i: number }, endHome: boolean) {
+    const lead = new Array(16).fill(-1), len = new Array(16).fill(0);
+    const home = this.note(0, oct);
+    const uniq = (a: number[]) => [...new Set(a)].filter((n) => Math.abs(n - home) <= 14).sort((x, y) => x - y);
+    const chordT: number[] = [], scaleT: number[] = [];
+    for (let q = -1; q <= 1; q++) for (let k = 0; k < 3; k++) chordT.push(this.note(chord + 2 * k, oct + q));
+    for (let d = -9; d <= 9; d++) scaleT.push(this.note(chord + d, oct));
+    const ct = uniq(chordT), sc = uniq(scaleT);
+    const stepIn = (list: number[], from: number) => {
+      let n = st.dir > 0 ? list.find((x) => x > from) : [...list].reverse().find((x) => x < from);
+      if (n === undefined) { st.dir = -st.dir; n = st.dir > 0 ? list.find((x) => x > from) : [...list].reverse().find((x) => x < from); }
+      return n ?? from;
+    };
+    const nearest = (list: number[], from: number, skip = 0) => [...list].sort((a, c) => Math.abs(a - from) - Math.abs(c - from))[Math.min(skip, list.length - 1)];
+    let s = 0, k = 0;
+    for (const L of rhythm) {
+      const l = Math.abs(L);
+      if (L > 0) {
+        const strong = s % 4 === 0 || l >= 3;
+        const list = strong ? ct : sc;
+        let n: number;
+        switch (contour) {
+          case "arp": n = stepIn(ct, st.prev); break;
+          case "run": n = strong ? stepIn(ct, st.prev) : stepIn(sc, st.prev); break;
+          case "pedal": { const hi = ct.findIndex((x) => x >= home + 7); n = k % 2 === 0 ? ct[hi >= 0 ? hi : ct.length - 1] : nearest(list, st.prev, r.int(1, 2)); break; }
+          case "repeat": n = k % 3 !== 2 && (!strong || ct.includes(st.prev)) ? st.prev : r.pick(ct); break;
+          case "leap": n = k % 2 === 1 ? (st.prev + 12 <= home + 14 ? st.prev + 12 : st.prev - 12) : nearest(ct, st.prev, r.int(0, 2)); break;
+          default: n = nearest(list, st.prev, r.int(1, 3)); if (r.chance(0.3)) st.dir = -st.dir;
+        }
+        if (strong && !ct.includes(n)) n = nearest(ct, n);
+        if (endHome && k === rhythm.filter((x) => x > 0).length - 1) n = home;
+        lead[s] = n; len[s] = l; st.prev = n; k++;
+      }
+      s += l;
+    }
+    return { lead, len };
   }
 
   private note(degree: number, octave: number): number {
@@ -197,37 +285,32 @@ export class Music {
     return this.st.root + this.scale[degree - o * n] + 12 * (o + octave);
   }
 
-  /** Phrase A over four bars of chords, then A' with a new ending: chord tones on strong beats, the pentatonic between. */
-  private writeMelody(r: Rng) {
-    for (let b = 0; b < 8; b++) {
-      this.lead[b] = new Array(16).fill(-1);
-      this.leadLen[b] = new Array(16).fill(0);
-      if (b >= 4 && b < 7) { this.lead[b] = [...this.lead[b - 4]]; this.leadLen[b] = [...this.leadLen[b - 4]]; continue; }
-      if (b === 2 && this.hook) { this.lead[2] = this.seqBar(this.lead[0], this.prog[2] - this.prog[0]); this.leadLen[2] = [...this.leadLen[0]]; continue; }
-      const chord = this.prog[b % 4];
-      let last = -1, prev = this.note(chord, this.leadOct);
+  /** Picks the lead effects per note: vibrato on long notes, slides between close notes, and on chip
+   *  songs a fast chord arpeggio on the longest ones. */
+  private writeFx(r: Rng, chip: boolean) {
+    const vib = r.chance(0.65), glide = r.chance(0.45), arp = chip || r.chance(0.2);
+    for (let b = 0; b < this.lead.length; b++) {
+      const fx = new Array(16).fill(0), from = new Array(16).fill(-1);
+      let prev = -1;
       for (let s = 0; s < 16; s++) {
-        const p = s % 4 === 0 ? 0.7 : s % 2 === 0 ? 0.45 : 0.15;
-        if (r.next() < p || (b === 7 && s === 0)) {
-          let cands: number[] = [];
-          for (let k = 0; k < 3; k++) for (let o = 0; o < 2; o++) cands.push(this.note(chord + 2 * k, this.leadOct + o - (k > 0 ? 1 : 0)));
-          if (s % 4 !== 0) for (const pd of this.penta) for (let o = 0; o < 2; o++) cands.push(this.note(pd, this.leadOct + o - 1));
-          const home = this.note(0, this.leadOct);
-          cands = cands.filter((n) => Math.abs(n - home) <= 14);
-          let pick = r.pick(cands);
-          if (r.chance(0.65)) {
-            cands.sort((a, c) => Math.abs(a - prev) - Math.abs(c - prev));
-            pick = cands[Math.min(r.int(1, 3), cands.length - 1)];
-          }
-          if (b === 7 && s === 0) pick = home;
-          this.lead[b][s] = pick;
-          prev = pick;
-          if (last >= 0) this.leadLen[b][last] = s - last;
-          last = s;
-        }
+        const n = this.lead[b][s], l = this.leadLen[b][s];
+        if (n < 0) continue;
+        if (arp && l >= 6) fx[s] |= FX_ARP;
+        else if (vib && l >= 4) fx[s] |= FX_VIB;
+        if (glide && prev >= 0 && prev !== n && Math.abs(prev - n) <= 7 && r.chance(0.4)) { fx[s] |= FX_GLIDE; from[s] = prev; }
+        prev = n;
       }
-      if (last >= 0) this.leadLen[b][last] = 16 - last;
+      this.leadFx[b] = fx; this.leadFrom[b] = from;
     }
+  }
+
+  /** The effects for the lead note at bar `b`, step `s` over `chord`. */
+  private fxAt(b: number, s: number, chord: number): VoiceFx | undefined {
+    const f = this.leadFx[b]?.[s] ?? 0;
+    if (!f) return undefined;
+    const n = this.lead[b][s], pcs = this.chordPcs(chord), up: number[] = [];
+    if (f & FX_ARP) for (let d = 1; d <= 12 && up.length < 2; d++) if (pcs.includes((n + d) % 12)) up.push(d);
+    return { vib: !!(f & FX_VIB), from: f & FX_GLIDE ? this.leadFrom[b][s] : undefined, arp: f & FX_ARP && pcs.includes(n % 12) ? up : undefined };
   }
 
   start() {
@@ -314,6 +397,7 @@ export class Music {
       this.section = sec;
       const cut = sec === "drop" ? 18000 : sec === "build" ? 2500 + 15000 * ((this.bar % 8) / 8) : sec === "break" ? 1800 : 4000;
       this.sectionFilter.frequency.setTargetAtTime(cut, t, 0.6);
+      this.delay.delayTime.setTargetAtTime((60 / this.curBpm / 4) * 3, t, 0.3);
     }
     const sec = this.section;
     const k: StepCtx = {
@@ -353,6 +437,12 @@ export class Music {
       case Drums.Break: if (kickOn && (s === 0 || s === 10 || (drop && s === 3))) K(); if (!intro && (s === 4 || s === 12)) Sn(1); if (drop && (s === 7 || s === 15)) Sn(0.35); H(s % 4 === 2 ? 0.8 : 0.45, s === 14); break;
       case Drums.Chip: if (kickOn && s % 4 === 0) K(); if (!intro && (s === 4 || s === 12)) Sn(0.9); if (s % 2 === 1) H(0.6); break;
       case Drums.Rock: if (kickOn && (s === 0 || s === 8 || (drop && s === 10))) K(); if (!intro && (s === 4 || s === 12)) Sn(1, true); if (s % 2 === 0) H(0.6); break;
+      // Two-step garage: skipping kicks, claps on 2 and 4, shuffled hats and rims.
+      case Drums.Garage: if (kickOn && (s === 0 || s === 10 || (drop && s === 7))) K(); if (!intro && (s === 4 || s === 12)) Sn(0.9, true); if (s % 2 === 1 || s === 6 || s === 14) H(s % 4 === 3 ? 0.75 : 0.45, s === 14); if (drop && (s === 3 || s === 11)) this.percHit(t, 2, 0.6); break;
+      // Trap / future bass: half-time snare, skippy kicks, hats with fast rolls at the end of the bar.
+      case Drums.Trap: if (kickOn && (s === 0 || (drop && (s === 3 || s === 11 || s === 14)))) K(); if (!intro && s === 8) Sn(1, true); if (!intro) { H(s % 4 === 0 ? 0.7 : 0.4); if (s >= 12 && (drop || build)) { this.hat(t + stepDur / 2, 0.35, false); if (s >= 14) { this.hat(t + stepDur / 4, 0.3, false); this.hat(t + (3 * stepDur) / 4, 0.3, false); } } } break;
+      // Techno: steady kicks, sixteenth hats with off-beat accents, a quiet clap, a rim on the off-beats.
+      case Drums.Techno: if (kickOn && s % 4 === 0) K(); if (!intro && drop && (s === 4 || s === 12)) Sn(0.5, true); H(s % 4 === 2 ? 0.9 : 0.3, s % 4 === 2); if (!intro && (s === 3 || s === 6 || s === 14)) this.percHit(t, 2, 0.5); break;
       case Drums.Soft: if (kickOn && s % 4 === 0 && !intro) K(); if (drop && (s === 4 || s === 12)) Sn(0.6, true); if (s % 4 === 2) H(0.5, true); break;
       default: if (kickOn && s % 4 === 0) K(); if (!intro && (s === 4 || s === 12)) Sn(0.9, true); if (s % 4 === 2) H(0.8, true); else if (drop || build) H(0.4); break;
     }
@@ -373,6 +463,10 @@ export class Music {
         case Bass.Octave: if (s % 2 === 0) this.bass(t, root + ((s / 2) % 2 ? 12 : 0), stepDur * 2); break;
         case Bass.Sustain: if (s === 0) this.bass(t, root, stepDur * 16); break;
         case Bass.Bounce: if (s % 4 === 2 || (drop && s % 8 === 7)) this.bass(t, root + (s % 8 === 7 ? 12 : 0), stepDur); break;
+        // Trance gallop: the three sixteenths after each kick.
+        case Bass.Gallop: if (s % 4 !== 0 && (drop || build || s % 4 === 2)) this.bass(t, root + (s === 15 ? 12 : 0), stepDur * 0.7, false, "square"); break;
+        // Reese: long, detuned, slowly moving low saws.
+        case Bass.Reese: if (s === 0 || (drop && s === 10)) this.bass(t, root, stepDur * (s === 0 ? 10 : 6), false, "reese"); break;
       }
     }
     // Arp
@@ -384,16 +478,16 @@ export class Music {
     if (drop) {
       const b = k.lb;
       if (this.lead[b][s] >= 0) {
-        const len = Math.max(1, this.leadLen[b][s]) * stepDur - stepDur / 3;
-        this.voice(t, this.lead[b][s], len, k.leadWave, 0.13, 900 + 1800 * st.bright, 2500 * st.bright, 0.008, 0.25, 0.6, false, true);
+        const len = Math.max(1, this.leadLen[b][s]) * stepDur * this.gate, fx = this.fxAt(b, s, chord);
+        this.voice(t, this.lead[b][s], len, k.leadWave, 0.13, 900 + 1800 * st.bright, 2500 * st.bright, 0.008, 0.25, 0.6, false, true, fx);
         // C blocks: the lead doubled an octave up, quietly.
-        if (k.form === 2) this.voice(t, this.lead[b][s] + 12, len, "pulse", 0.045, 1500 + 1500 * st.bright, 2000, 0.008, 0.2, 0.5, false, false);
+        if (k.form === 2) this.voice(t, this.lead[b][s] + 12, len, "pulse", 0.045, 1500 + 1500 * st.bright, 2000, 0.008, 0.2, 0.5, false, false, fx);
       }
     }
   }
 
   /** Boss: heavier and a little faster - galloping kicks, a driving octave bass, power-chord stabs, the
-   *  melody low and doubled a fifth up, a fast arp, snare rolls into every other bar. */
+   *  melody low with a chord note under it, a fast arp, snare rolls into every other bar. */
   private stepBoss(k: StepCtx) {
     const st = this.st, { t, s, dur, drop, build, brk, chord, lastBuildBar } = k;
     const root = this.note(chord, -1);
@@ -423,7 +517,7 @@ export class Music {
       if (n >= 0) {
         const len = Math.max(1, this.leadLen[k.lb][s]) * dur - dur / 3, v = drop ? 0.12 : 0.06;
         this.voice(t, n - 12, len, "saw", v, 700 + 1400 * st.bright, 2600, 0.006, 0.2, 0.7, false, true);
-        this.voice(t, n - 5, len, "square", v * 0.5, 900, 1800, 0.006, 0.2, 0.6, false, false);
+        this.voice(t, this.chordBelow(n, chord), len, "square", v * 0.5, 900, 1800, 0.006, 0.2, 0.6, false, false);
       }
     }
   }
@@ -454,7 +548,7 @@ export class Music {
     // Melody in drops (an octave up on the first beat of each bar), the first half of it in builds.
     if (drop || (build && s < 8)) {
       const n = this.lead[k.lb][s];
-      if (n >= 0) this.voice(t, n + (s === 0 ? 12 : 0), Math.max(1, this.leadLen[k.lb][s]) * dur - dur / 3, "square", drop ? 0.1 : 0.06, 1100 + 1500 * st.bright, 2500, 0.005, 0.2, 0.55, false, true);
+      if (n >= 0) this.voice(t, n + (s === 0 ? 12 : 0), Math.max(1, this.leadLen[k.lb][s]) * dur * this.gate, "square", drop ? 0.1 : 0.06, 1100 + 1500 * st.bright, 2500, 0.005, 0.2, 0.55, false, true, this.fxAt(k.lb, s, chord));
     }
   }
 
@@ -563,15 +657,17 @@ export class Music {
   }
   private osc(type: Wave, f: number): OscillatorNode {
     const o = ctx!.createOscillator();
+    this.collect?.push(o);
     if (type === "pulse" && this.pulseWave) o.setPeriodicWave(this.pulseWave);
     else o.type = type === "saw" ? "sawtooth" : type === "square" ? "square" : type === "tri" ? "triangle" : "sine";
     o.frequency.value = f;
     return o;
   }
-  private bass(t: number, midi: number, dur: number, wobble = false, waveAs?: Wave) {
+  private bass(t: number, midi: number, dur: number, wobble = false, waveAs?: Wave | "reese") {
     const c = ctx!, st = this.st;
     const f = hz(midi);
-    const wave: Wave = waveAs ?? st.bass === Bass.Wobble ? "saw" : st.bass === Bass.Bounce ? "square" : this.sineBass ? "sine" : "saw";
+    const reese = waveAs === "reese";
+    const wave: Wave = waveAs && waveAs !== "reese" ? waveAs : st.bass === Bass.Bounce ? "square" : this.sineBass ? "sine" : "saw";
     const o = this.osc(wave, f);
     const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.Q.value = wobble ? 8 : 1.5;
     const base = wobble ? 180 : 260 + 300 * st.bright;
@@ -581,6 +677,11 @@ export class Music {
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.004); g.gain.setTargetAtTime(0.24, t + 0.01, 0.05);
     g.gain.setTargetAtTime(0.0001, t + dur, 0.02);
     o.connect(filt); filt.connect(g); g.connect(this.bus.duck);
+    if (reese) {
+      const o2 = this.osc("saw", f * 1.012), lfo = c.createOscillator(), lg = c.createGain();
+      lfo.frequency.value = 0.7; lg.gain.value = 250; lfo.connect(lg); lg.connect(filt.frequency);
+      o2.connect(filt); o2.start(t); o2.stop(t + dur + 0.15); lfo.start(t); lfo.stop(t + dur + 0.15);
+    }
     if (wobble) {
       const lfo = c.createOscillator(); lfo.frequency.value = (this.curBpm / 60) * (this.bar % 4 === 3 ? 3 : 2);
       const lg = c.createGain(); lg.gain.value = 1400;
@@ -591,7 +692,7 @@ export class Music {
   }
   private pad(t: number, chord: number, dur: number, stab: boolean, level?: number) {
     const c = ctx!;
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < (this.st.sev ? 4 : 3); k++) {
       const f = hz(this.note(chord + 2 * k, 0));
       const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 600 + 900 * this.st.bright;
       const g = c.createGain();
@@ -601,8 +702,10 @@ export class Music {
       filt.connect(g); g.connect(this.bus.duck);
     }
   }
-  private voice(t: number, midi: number, dur: number, wave: Wave, peak: number, cutoff: number, envAmt: number, attack: number, decay: number, sustain: number, ducked: boolean, echo: boolean) {
+  private voice(t: number, midi: number, dur: number, wave: Wave, peak: number, cutoff: number, envAmt: number, attack: number, decay: number, sustain: number, ducked: boolean, echo: boolean, fx?: VoiceFx) {
     const c = ctx!;
+    const os: OscillatorNode[] = [];
+    this.collect = os;
     const f = hz(midi);
     const filt = c.createBiquadFilter(); filt.type = "lowpass"; filt.Q.value = 1;
     filt.frequency.setValueAtTime(cutoff + envAmt, t); filt.frequency.setTargetAtTime(cutoff, t, decay / 3);
@@ -631,6 +734,17 @@ export class Music {
     } else {
       const o = this.osc(wave, f); o.connect(filt); o.start(t); o.stop(t + dur + 0.4);
       if (wave === "saw") { const o2 = this.osc("saw", f * 1.006); o2.connect(filt); o2.start(t); o2.stop(t + dur + 0.4); }
+    }
+    this.collect = null;
+    if (fx) {
+      // Tracker effects, on every oscillator of the note (in cents).
+      if (fx.from !== undefined) for (const o of os) { o.detune.setValueAtTime((fx.from - midi) * 100, t); o.detune.linearRampToValueAtTime(0, t + 0.07); }
+      if (fx.arp) { let i = 0; for (let tt = t; tt < t + dur; tt += 0.045, i++) { const v = [0, ...fx.arp][i % 3] * 100; for (const o of os) o.detune.setValueAtTime(v, tt); } }
+      if (fx.vib) {
+        const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 5.5;
+        lg.gain.setValueAtTime(0, t); lg.gain.setValueAtTime(0, t + 0.15); lg.gain.linearRampToValueAtTime(28, t + 0.45);
+        lfo.connect(lg); for (const o of os) lg.connect(o.detune); lfo.start(t); lfo.stop(t + dur + 0.4);
+      }
     }
     filt.connect(g);
     g.connect(ducked ? this.bus.duck : this.bus.out);
