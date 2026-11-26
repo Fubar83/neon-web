@@ -110,6 +110,12 @@ const RADIO: { style: MusicStyle; name: string; from: string; seed: number }[] =
   { style: "Space", name: "SPACE", from: "Radio only: slow, wide pads.", seed: 44 },
   { style: "Wobble", name: "WOBBLE", from: "Radio only: half-time with a wobble bass.", seed: 55 },
   { style: "Breakbeat", name: "BREAKBEAT", from: "Radio only: fast broken beats.", seed: 66 },
+  { style: "Jazz", name: "JAZZ", from: "Radio only: fast swing - ride cymbal, walking bass, piano comping, sax.", seed: 77 },
+  { style: "Baroque", name: "BAROQUE", from: "Radio only: harpsichord, broken chords, cello and strings, timpani.", seed: 88 },
+  { style: "Orchestral", name: "ORCHESTRAL", from: "Radio only: epic strings, brass, choir, taiko drums.", seed: 99 },
+  { style: "Funk", name: "FUNK", from: "Radio only: slap bass, clavinet, horn stabs, tight drums.", seed: 111 },
+  { style: "Samba", name: "SAMBA", from: "Radio only: surdo, tamborim and shakers, piano montuno, flute.", seed: 122 },
+  { style: "Rock", name: "ROCK", from: "Radio only: overdriven power chords, backbeat drums, lead guitar.", seed: 133 },
 ];
 const MOODS: { name: string; mode: MusicMode; energy: number; desc: string }[] = [
   { name: "CALM", mode: "calm", energy: 0.2, desc: "The calm version: pads, bells and a soft hat. Plays in the shop and after a game over." },
