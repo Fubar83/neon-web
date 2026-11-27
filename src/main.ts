@@ -104,17 +104,17 @@ const RADIO: { style: MusicStyle; name: string; from: string; seed: number }[] =
   { style: "Synthwave", name: "SYNTHWAVE", from: "Plays in Synthwave Sunset.", seed: 303 },
   { style: "Bounce", name: "BOUNCE", from: "Plays in Sunny Synth.", seed: 4242 },
   { style: "Menu", name: "MENU", from: "Plays in the menu.", seed: 7 },
-  { style: "Deep", name: "DEEP", from: "Radio only: soft, deep house with bells.", seed: 11 },
+  { style: "Deep", name: "DEEP", from: "Plays in Abyss Ocean.", seed: 11 },
   { style: "Electro", name: "ELECTRO", from: "Radio only: rolling bass, square lead.", seed: 22 },
-  { style: "Crystal", name: "CRYSTAL", from: "Radio only: bright bells over four-to-the-floor.", seed: 33 },
-  { style: "Space", name: "SPACE", from: "Radio only: slow, wide pads.", seed: 44 },
+  { style: "Crystal", name: "CRYSTAL", from: "Plays in Crystal Caverns.", seed: 33 },
+  { style: "Space", name: "SPACE", from: "Plays in Deep Space.", seed: 44 },
   { style: "Wobble", name: "WOBBLE", from: "Radio only: half-time with a wobble bass.", seed: 55 },
-  { style: "Breakbeat", name: "BREAKBEAT", from: "Radio only: fast broken beats.", seed: 66 },
-  { style: "Trance", name: "TRANCE", from: "Radio only: supersaw lead, harmonic minor, rolling bass.", seed: 77 },
+  { style: "Breakbeat", name: "BREAKBEAT", from: "Plays in Storm Front.", seed: 66 },
+  { style: "Trance", name: "TRANCE", from: "Plays in Pyramid Dunes.", seed: 77 },
   { style: "Eurodance", name: "EURODANCE", from: "Radio only: bouncy octave bass, bright pulse lead.", seed: 88 },
-  { style: "Techno", name: "TECHNO", from: "Radio only: dark and driving, metallic FM lead.", seed: 99 },
+  { style: "Techno", name: "TECHNO", from: "Plays in Neon City.", seed: 99 },
   { style: "FutureBass", name: "FUTURE BASS", from: "Radio only: half-time, big major chords, supersaws.", seed: 111 },
-  { style: "Rave", name: "RAVE", from: "Radio only: fast and happy, organ stabs, mixolydian.", seed: 122 },
+  { style: "Rave", name: "RAVE", from: "Plays in Rave Reactor.", seed: 122 },
   { style: "Garage", name: "GARAGE", from: "Radio only: swung broken beat, bells, dorian.", seed: 133 },
 ];
 const MOODS: { name: string; mode: MusicMode; energy: number; desc: string }[] = [
@@ -164,7 +164,7 @@ function openRadio() {
   radio.render();
 }
 
-const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7] };
+const ROOMS: Record<string, [number, number]> = { Clockwork: [1.4, 0.8], Circuit: [0.6, 0.9], Synthwave: [2.2, 0.7], Crystal: [2.6, 1], Space: [3, 0.6], City: [1.2, 0.8], Ocean: [2.4, 0.5], Desert: [1.6, 0.9], Storm: [2, 0.7], Reactor: [1, 1] };
 
 function setWorld(level: LevelDef) {
   if (world) { scene.remove(world.root); world.dispose(); }

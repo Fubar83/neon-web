@@ -1,6 +1,7 @@
 // The gallery: every enemy, the mini-bosses and the player's ship, with what they do. The game shows
 // each one live (Game.setDemo), so what you see is exactly how they behave in a run.
-import type { DemoKind, LevelDef } from "./game";
+import type { BossKind, DemoKind, EnemyKind, LevelDef } from "./game";
+import { BOSS_RESIST, RESIST, resistStats } from "./resist";
 
 export interface GalleryEntry {
   kind: DemoKind;
@@ -114,10 +115,16 @@ export const GALLERY: GalleryEntry[] = [
   },
 ];
 
+// Each enemy and mini-boss lists what it is protected against and weak to (from resist.ts).
+for (const g of GALLERY) {
+  const r = RESIST[g.kind as EnemyKind] ?? BOSS_RESIST[g.kind as BossKind];
+  if (r) g.stats.push(...resistStats(r));
+}
+
 /** The stage the gallery is shown on: no waves, tunnels or bosses of its own. */
 export const GALLERY_LEVEL: LevelDef = {
   id: "gallery", name: "Gallery", group: "", theme: "Circuit", music: "Menu", seed: 9, speed: 20, finish: 1e9, startDifficulty: 0,
   tiers: [["drone"]], tunnels: [], bosses: [],
 };
 
-export const GALLERY_NOTE = "Every enemy is worth 20% more and gets tougher each danger level. Destroy a whole wave for a bonus.";
+export const GALLERY_NOTE = "Every enemy is worth 20% more and gets tougher each danger level and as your ship gets stronger. Destroy a whole wave for a bonus.";

@@ -13,6 +13,7 @@ import { Input, Rng, clamp } from "./util";
 import type { Theme } from "./world";
 import type { MusicStyle } from "./music";
 import { TunnelRun } from "./tunnel";
+import { RESIST, BOSS_RESIST, DAMAGE_NAME } from "./resist";
 import { DEFAULT_LOADOUT, DUAL_FACTOR, HULLS, type AddonKind, type HullKind, type Loadout } from "./loadout";
 
 export const HALF_W = 800, HALF_H = 450;
@@ -126,6 +127,20 @@ export const LEVELS: LevelDef[] = [
     tiers: [["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog"], ["burster"]], tunnels: TUNNELS([0.65, 0.5, 0.35, 0.2]), bosses: BOSSES("dreadnought", "warden", "fortress") },
   { id: "nt03", name: "3  Synthwave Sunset", group: "NEON THEMES", theme: "Synthwave", music: "Synthwave", seed: 303, speed: 23, finish: 16000, startDifficulty: 0.2,
     tiers: [["fighter"], ["drone"], ["burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.55, 0.4, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "dreadnought") },
+  { id: "nt04", name: "4  Crystal Caverns", group: "NEON THEMES", theme: "Crystal", music: "Crystal", seed: 33, speed: 23, finish: 16000, startDifficulty: 0.25,
+    tiers: [["drone", "rock"], ["blinker"], ["splitter"], ["fighter"], ["burster"], ["cog"]], tunnels: TUNNELS([0.6, 0.45, 0.3, 0.2]), bosses: BOSSES("warden", "dreadnought", "fortress") },
+  { id: "nt05", name: "5  Deep Space", group: "NEON THEMES", theme: "Space", music: "Space", seed: 44, speed: 24, finish: 16000, startDifficulty: 0.3,
+    tiers: [["rock"], ["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog", "burster"]], tunnels: TUNNELS([0.55, 0.4, 0.3, 0.15]), bosses: BOSSES("fortress", "warden", "dreadnought") },
+  { id: "nt06", name: "6  Neon City", group: "NEON THEMES", theme: "City", music: "Techno", seed: 99, speed: 24, finish: 16000, startDifficulty: 0.35,
+    tiers: [["fighter", "drone"], ["burster"], ["blinker"], ["cog"], ["splitter"], ["rock"]], tunnels: TUNNELS([0.5, 0.4, 0.25, 0.15]), bosses: BOSSES("dreadnought", "fortress", "warden") },
+  { id: "nt07", name: "7  Abyss Ocean", group: "NEON THEMES", theme: "Ocean", music: "Deep", seed: 11, speed: 23, finish: 16000, startDifficulty: 0.4,
+    tiers: [["splitter"], ["drone"], ["blinker"], ["burster"], ["fighter"], ["cog"]], tunnels: TUNNELS([0.5, 0.35, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "warden") },
+  { id: "nt08", name: "8  Pyramid Dunes", group: "NEON THEMES", theme: "Desert", music: "Trance", seed: 77, speed: 25, finish: 16000, startDifficulty: 0.45,
+    tiers: [["drone", "fighter"], ["rock"], ["cog"], ["burster"], ["splitter"], ["blinker"]], tunnels: TUNNELS([0.45, 0.35, 0.2, 0.1]), bosses: BOSSES("fortress", "dreadnought", "dreadnought") },
+  { id: "nt09", name: "9  Storm Front", group: "NEON THEMES", theme: "Storm", music: "Breakbeat", seed: 66, speed: 26, finish: 16000, startDifficulty: 0.5,
+    tiers: [["blinker", "drone"], ["fighter"], ["splitter"], ["burster"], ["cog"], ["rock"]], tunnels: TUNNELS([0.4, 0.3, 0.2, 0.05]), bosses: BOSSES("dreadnought", "warden", "fortress") },
+  { id: "nt10", name: "10  Rave Reactor", group: "NEON THEMES", theme: "Reactor", music: "Rave", seed: 122, speed: 26, finish: 16000, startDifficulty: 0.55,
+    tiers: [["fighter", "burster"], ["blinker"], ["cog"], ["splitter"], ["drone", "rock"]], tunnels: TUNNELS([0.4, 0.25, 0.15, 0.05]), bosses: BOSSES("warden", "dreadnought", "fortress") },
 ];
 
 const hitMats = new Map<number, LineMaterial>();
@@ -179,7 +194,7 @@ export const WEAPONS: Record<WeaponKind, { name: string; color: number }> = {
   chain: { name: "CHAIN LASER", color: 0xaa77ff },
 };
 /** Something the ship's weapons can hit: an enemy or a mini-boss part (shielded parts take no damage yet). */
-interface Target { ref: object; readonly x: number; readonly y: number; r: number; shielded: boolean; alive(): boolean; hit(dmg: number, quiet: boolean): void }
+interface Target { ref: object; readonly x: number; readonly y: number; r: number; shielded: boolean; alive(): boolean; hit(dmg: number, quiet: boolean, kind: WeaponKind): void }
 interface Zap { obj: LineSegments2; life: number }
 /** A shockwave: a half ring growing from where it was fired; it hits each target once, harder near the middle. */
 interface Wave { obj: LineSegments2; mat: LineMaterial; x: number; y: number; r: number; max: number; dmg: number; half: number; hit: Set<object> }
@@ -562,7 +577,7 @@ export class Game {
         this.laserGlow.scale.set(half * 1.6 * flick, len, 1);
         this.laserCore.scale.set(half * 0.4, len, 1);
         if (hit) {
-          for (const b of burned) b.t.hit((8 + 3.2 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true);
+          for (const b of burned) b.t.hit((8 + 3.2 * (lvl - 1)) * (1 + 0.2 * this.mod("laser", "dmg")) * rate * dmg * dt, true, "laser");
           if (Math.random() < 0.6) this.spark(nx + sa * burned[0].d, ny + ca * burned[0].d, -sa * 200, -ca * 200, 0.25, new THREE.Color(2.4, 0.6, 1));
         }
         sfx("laser", pan, 0.35, 1.6);
@@ -638,7 +653,7 @@ export class Game {
             const f = k / segs, jit = k === segs ? 0 : 22;
             path.push(new THREE.Vector3(x0 + (x1 - x0) * f + (Math.random() - 0.5) * jit, y0 + (y1 - y0) * f + (Math.random() - 0.5) * jit, 4));
           }
-          best.hit(cd * dmg * keep ** j, false);
+          best.hit(cd * dmg * keep ** j, false, "chain");
           this.burst(x1, y1, new THREE.Color(1.6, 1, 2.6), 5, 220);
           from = [x1, y1];
         }
@@ -661,26 +676,26 @@ export class Game {
     const out: Target[] = [];
     for (const e of this.enemies) {
       if (e.dying > 0 || e.y > HALF_H + e.r * 0.3) continue;
-      out.push({ ref: e, get x() { return e.x; }, get y() { return e.y; }, r: e.r, shielded: false, alive: () => e.dying <= 0 && this.enemies.includes(e), hit: (d, q) => this.hitEnemy(e, d, q) });
+      out.push({ ref: e, get x() { return e.x; }, get y() { return e.y; }, r: e.r, shielded: false, alive: () => e.dying <= 0 && this.enemies.includes(e), hit: (d, q, w) => this.hitEnemy(e, d, q, w) });
     }
     const b = this.boss;
     if (b) for (const p of b.parts) {
       if (!p.alive) continue;
-      out.push({ ref: p, get x() { return b.x + p.ox; }, get y() { return b.y + p.oy; }, r: p.r, shielded: p.stage > b.stage, alive: () => p.alive && this.boss === b, hit: (d, q) => { if (this.boss === b && p.alive) this.hitPart(p, d, b.x + p.ox, b.y + p.oy, q); } });
+      out.push({ ref: p, get x() { return b.x + p.ox; }, get y() { return b.y + p.oy; }, r: p.r, shielded: p.stage > b.stage, alive: () => p.alive && this.boss === b, hit: (d, q, w) => { if (this.boss === b && p.alive) this.hitPart(p, d, b.x + p.ox, b.y + p.oy, q, w); } });
     }
     return out;
   }
 
   /** Area damage: everything within reach of (x, y). */
-  private blast(x: number, y: number, r: number, dmg: number, quiet: boolean) {
-    for (const t of this.targets()) if (Math.hypot(t.x - x, t.y - y) < r + t.r) t.hit(dmg, quiet);
+  private blast(x: number, y: number, r: number, dmg: number, quiet: boolean, kind: WeaponKind) {
+    for (const t of this.targets()) if (Math.hypot(t.x - x, t.y - y) < r + t.r) t.hit(dmg, quiet, kind);
   }
 
   private lavaBurst(s: Shot) {
     if (s.done) return;
     s.done = true; s.life = 0;
     const lvl = this.weapon, r = (90 + 15 * lvl) * (1 + 0.2 * this.mod("lava", "radius"));
-    this.blast(s.x, s.y, r, s.dmg, false);
+    this.blast(s.x, s.y, r, s.dmg, false, "lava");
     this.explode(s.x, s.y, new THREE.Color(2.6, 0.8, 0.2), 1.1);
     for (let i = 0; i < 26; i++) { const a = Math.random() * Math.PI * 2, sp = r * (1.5 + Math.random() * 2); this.spark(s.x, s.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.4, new THREE.Color(2.6, 0.5 + Math.random(), 0.1)); }
     // A burning pool that keeps hurting for a while.
@@ -709,7 +724,7 @@ export class Game {
         if (d - t.r > w.r) continue;  // not reached yet
         if (w.half < Math.PI && Math.abs(Math.atan2(t.x - w.x, t.y - w.y)) > w.half + Math.atan2(t.r, Math.max(1, d))) continue;  // outside its arc
         w.hit.add(t.ref);
-        t.hit(w.dmg * (1 - 0.75 * Math.min(1, d / w.max)), false);  // full strength close by, a quarter at the edge
+        t.hit(w.dmg * (1 - 0.75 * Math.min(1, d / w.max)), false, "shock");  // full strength close by, a quarter at the edge
         this.burst(t.x, t.y, new THREE.Color(0.6, 2, 1.8), 6, 240);
       }
       if (w.r >= w.max) { this.root.remove(w.obj); w.obj.geometry.dispose(); disposeMaterial(w.mat); this.waves.splice(this.waves.indexOf(w), 1); }
@@ -723,7 +738,7 @@ export class Game {
       p.obj.rotation.z += dt * 1.5;
       p.obj.scale.setScalar(0.9 + 0.1 * Math.sin(p.life * 20));
       if (Math.random() < 0.5) { const a = Math.random() * Math.PI * 2, d = Math.random() * p.r; this.spark(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0, 60, 0.35, new THREE.Color(2.4, 0.6, 0.1)); }
-      this.blast(p.x, p.y, p.r, p.dps * dt, true);
+      this.blast(p.x, p.y, p.r, p.dps * dt, true, "lava");
       if (p.life <= 0) { this.root.remove(p.obj); p.obj.geometry.dispose(); this.pools.splice(this.pools.indexOf(p), 1); }
     }
   }
@@ -813,10 +828,12 @@ export class Game {
       case "cog": color = 0xffa020; g.add(polylines([cog(16, 250, 0.86), circle(150, 48), polygon(6, 60)], true, M(color, 4, 2))); hp = 70; r = 238; score = 1500; fireMin = 2.4; fireMax = 3; spin = 0.4; break;
     }
     const d = this.difficulty;
-    const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.45, 1 - 0.35 * d) * (1 + 0.8 * this.ease);
-    // Tougher the further you get: with the difficulty, plus 25% more health per minute flown (your
-    // weapons keep getting stronger too). Rocks stay easy.
-    if (kind !== "rock") hp *= (1 + 0.8 * d) * (1 + 0.25 * this.minutesIn) * (1 - 0.25 * this.ease);
+    const tough = this.toughness;
+    const fireScale = (this.level.gentle?.fire ?? 1) * Math.max(0.45, 1 - 0.35 * d) * (1 + 0.8 * this.ease) / (1 + 0.12 * (tough - 1));
+    // Tougher the further you get: with the difficulty, plus 25% more health per minute flown, and more
+    // as your ship gets stronger (fire a little faster too). Rocks stay easier.
+    if (kind !== "rock") hp *= (1 + 0.8 * d) * (1 + 0.25 * this.minutesIn) * (1 - 0.25 * this.ease) * tough;
+    else hp *= Math.sqrt(tough);
     score = Math.round((score * (1 + 0.2 * this.minute)) / 10) * 10;  // worth more each danger level
     const e: Enemy = {
       kind, obj: g, mats, color: new THREE.Color(color), rng, x, y, sx: x, sy: y, age: 0, hp, maxHp: hp, r, score,
@@ -918,9 +935,11 @@ export class Game {
     sfx("enemyShot", e.x / HALF_W, 0.5, r > 11 ? 0.7 : 1);
   }
 
-  private hitEnemy(e: Enemy, dmg: number, quiet = false) {
+  private hitEnemy(e: Enemy, dmg: number, quiet = false, w: WeaponKind = "pulse") {
     if (e.dying > 0 || e.y > HALF_H + e.r * 0.3) return;  // only once (mostly) on screen
-    e.hp -= dmg;
+    const mult = RESIST[e.kind][w] ?? 1;
+    e.hp -= dmg * mult;
+    this.noteResist(e.kind === "cog" ? "GIANT COGS" : e.kind.toUpperCase() + "S", w, mult, e.x, e.y, quiet);
     // Beams and pools hit every frame: flash and click only now and then.
     if (!quiet || this.quietHitT <= 0) {
       if (quiet) this.quietHitT = 0.1;
@@ -929,6 +948,30 @@ export class Game {
       sfx("hit", e.x / HALF_W, 0.4);
     }
     if (e.hp <= 0) this.kill(e, true);
+  }
+
+  /** Damage types: a grey puff when a hit is shrugged off, and the first time it happens (or something is
+   *  weak to it) a short message saying so. */
+  private resistSeen = new Set<string>();
+  private noteResist(who: string, w: WeaponKind, mult: number, x: number, y: number, quiet: boolean) {
+    if (mult === 1) return;
+    if (!quiet && mult < 1) this.burst(x, y, new THREE.Color(0.7, 0.7, 0.75), 4, 140);
+    if (this.demo || this.messageT > 0.3) return;
+    const key = who + w;
+    if (this.resistSeen.has(key)) return;
+    this.resistSeen.add(key);
+    if (mult <= 0.65) this.say(`${who} RESIST ${DAMAGE_NAME[w].toUpperCase()}`, 2);
+    else if (mult >= 1.25) this.say(`${who}: WEAK TO ${DAMAGE_NAME[w].toUpperCase()}`, 2);
+  }
+
+  /** How strong the ship has become (weapon level, fire rate, damage, everything bought this run): enemies
+   *  and mini-bosses toughen up to match, so upgrades help without making the run easy. */
+  private get toughness() {
+    if (this.demo || this.level.gentle) return 1;
+    const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
+    const ups = sum(this.mods) + sum(this.bought) + Math.max(0, this.owned.size - 1);
+    const power = this.damage * this.fireRate * (1 + 0.3 * (this.weapon - 1)) * (1 + 0.06 * ups);
+    return clamp(power ** 0.55, 1, 3.5);
   }
 
   private kill(e: Enemy, scored: boolean) {
@@ -971,7 +1014,7 @@ export class Game {
     const frameMat = lineMaterial(def.color, 3, 1.4);
     const parts: BossPart[] = [];
     const d = this.difficulty;
-    const hpScale = (this.demo ? 0.25 : 1.6) * (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1);
+    const hpScale = (this.demo ? 0.25 : 1.6) * (1 + 0.6 * d) * (1 + 0.15 * this.minutesIn) * (this.level.gentle ? 0.5 : 1) * this.toughness ** 0.8;
     def.sections.forEach((sec, stage) => {
       for (const [ox, oy] of sec.at) {
         const mat = lineMaterial(sec.color, 3.5, 2.4);
@@ -1013,12 +1056,14 @@ export class Game {
     return `${b.name}  -  ${open ? open.label : ""}  (${b.stage + 1}/3)`;
   }
 
-  private hitPart(p: BossPart, dmg: number, x: number, y: number, quiet = false) {
+  private hitPart(p: BossPart, dmg: number, x: number, y: number, quiet = false, w: WeaponKind = "pulse") {
     const b = this.boss!;
     const show = !quiet || this.quietHitT <= 0;
     if (show && quiet) this.quietHitT = 0.1;
     if (p.stage > b.stage) { if (show) { this.burst(x, y, new THREE.Color(0.6, 0.8, 2), 4, 200); sfx("shield", x / HALF_W, 0.25, 1.6); } return; }  // shielded: not yet
-    p.hp -= dmg;
+    const mult = BOSS_RESIST[b.kind][w] ?? 1;
+    p.hp -= dmg * mult;
+    this.noteResist(b.name, w, mult, x, y, quiet);
     if (show) {
       p.obj.scale.setScalar(1.06);
       setTimeout(() => p.obj.scale.setScalar(1), 50);
@@ -1556,7 +1601,7 @@ export class Game {
         if (s.hitRefs?.has(p)) continue;
         if (near(s, this.boss.x + p.ox, this.boss.y + p.oy, p.r + s.r)) {
           if (s.kind === "lava") { this.lavaBurst(s); continue; }
-          this.hitPart(p, s.dmg, s.x, s.y);
+          this.hitPart(p, s.dmg, s.x, s.y, false, s.kind === "missile" ? "missile" : "pulse");
           this.shotSpent(s, p);
         }
       }
@@ -1568,7 +1613,7 @@ export class Game {
         if (s.hitRefs?.has(e)) continue;
         if (near(s, e.x, e.y, e.r + s.r)) {
           if (s.kind === "lava") { this.lavaBurst(s); break; }
-          this.hitEnemy(e, s.dmg);
+          this.hitEnemy(e, s.dmg, false, s.kind === "missile" ? "missile" : "pulse");
           this.burst(s.x, s.y, s.kind === "missile" ? new THREE.Color(2, 1.2, 0.4) : new THREE.Color(0.5, 1.5, 2), s.kind === "missile" ? 8 : 3, 250);
           this.shotSpent(s, e);
           if (s.life <= 0) break;
@@ -1615,7 +1660,7 @@ export class Game {
 
   /** A shot hit something: a missile with blast bursts; a piercing shot carries on (once per enemy). */
   private shotSpent(s: Shot, what: object) {
-    if (s.blast) { this.blast(s.x, s.y, s.blast, s.dmg * 0.5, true); this.burst(s.x, s.y, new THREE.Color(2.4, 1.2, 0.3), 12, s.blast * 4); }
+    if (s.blast) { this.blast(s.x, s.y, s.blast, s.dmg * 0.5, true, "missile"); this.burst(s.x, s.y, new THREE.Color(2.4, 1.2, 0.3), 12, s.blast * 4); }
     if (s.pierce && s.pierce > 0) { s.pierce--; (s.hitRefs ??= new Set()).add(what); return; }
     s.life = 0;
   }

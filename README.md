@@ -46,13 +46,15 @@ Play sideways (landscape), with two thumbs.
 ## Levels
 
 - Sunny Synth (for kids): gentler, endless lives, 10,000 m.
-- Clockwork Foundry, Circuit Board, Synthwave Sunset: 16,000 m each.
+- Clockwork Foundry, Circuit Board, Synthwave Sunset, Crystal Caverns, Deep Space, Neon City, Abyss Ocean, Pyramid Dunes, Storm Front, Rave Reactor: 16,000 m each, each harder from the start than the one before, each with its own neon world (all built in code) and song.
 
 ## Coins, shop and hangar
 
 Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemies drop coins (drone 5 ... cog 100, boss parts 40-200; a cleared wave 10 more; a cleared tunnel 50 per tunnel). They drift down slowly and last about 16 seconds (blinking near the end); fly within reach and they come to you.
 
 **Away pause**: switching to another window or tab, locking the phone, or 30 seconds without input in a run freezes the game and stops all sound until a key or tap.
+
+**Tougher enemies, damage types**: enemies and mini-bosses get tougher (and fire a little faster) as your ship gets stronger: weapon level, faster fire, damage and everything bought this run. Each enemy kind and mini-boss is protected against some weapons and weak to others (see the gallery; table in `src/resist.ts`): blinkers shrug off lightning, rocks lava, bursters pulse shots, fighters lasers; giant cogs conduct lightning. A grey puff marks a resisted hit, and a message says so the first time.
 
 **Shop** (P or Tab pauses a run; P, Esc or a tap on the game beside it goes back): spend the run's coins. Purchases last for that run only. LEAVE RUN in the shop ends the run (it asks first).
 
