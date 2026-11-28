@@ -5,7 +5,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { setLineResolution } from "./neon";
-import { NeonWorld } from "./world";
+import { NeonWorld, LOOK } from "./world";
 import { Game, LEVELS, HALF_H, UPGRADES, WEAPONS, type LevelDef } from "./game";
 import { ADDONS, loadLoadout, saveLoadout, type Loadout } from "./loadout";
 import { Panel } from "./panel";
@@ -170,6 +170,8 @@ function setWorld(level: LevelDef) {
   if (world) { scene.remove(world.root); world.dispose(); }
   world = new NeonWorld(level.theme, level.seed);
   scene.add(world.root);
+  scene.background = new THREE.Color(LOOK[level.theme].bg);
+  bloom.strength = LOOK[level.theme].bloom;
   setRoom(...ROOMS[level.theme]);
 }
 
@@ -228,6 +230,7 @@ function previewTheme() {
 }
 
 function openMenu() {
+  hideEnd();
   inMenu = true;
   inGallery = false;
   inHangar = false;
@@ -246,6 +249,22 @@ function openMenu() {
   playMusic("Menu", 7);
   if (music) music.energy = 0.2;
 }
+
+/** The end-of-run results: score (and a new best), distance, danger level, time. */
+function showEnd() {
+  if (!game) return;
+  endShown = true;
+  const g = game, el = $("endrun");
+  $("endtitle").textContent = g.done ? "LEVEL COMPLETE" : "RUN OVER";
+  const mins = Math.floor(g.runTime / 60), secs = Math.floor(g.runTime % 60);
+  const rows: [string, string][] = [["SCORE", pts(g.score)], ["BEST", pts(Math.max(g.score, best(g.level.id, skill)))], ["DISTANCE", `${fmt(Math.min(g.dist, g.level.finish))} / ${fmt(g.level.finish)}`], ["DANGER LEVEL", String(g.minute + 1)], ["TIME", `${mins}:${String(secs).padStart(2, "0")}`], ["DIFFICULTY", ["EASY", "NORMAL", "HARD"][skill]]];
+  $("endstats").innerHTML = (newBest ? '<div class="nb">NEW BEST!</div>' : "") + rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+  el.style.display = "flex";
+  requestAnimationFrame(() => { el.style.opacity = "1"; });
+  sfx(g.done ? "powerUp" : "menuSelect", 0, 0.7);
+}
+function hideEnd() { endShown = false; const el = $("endrun"); el.style.display = "none"; el.style.opacity = "0"; }
+function retryLevel() { if (!game) return; const i = LEVELS.indexOf(game.level); if (i >= 0) { menuIndex = i; startLevel(); } }
 
 function startLevel() {
   if (menuIndex === LEVELS.length) { openHangar(); return; }
@@ -266,7 +285,8 @@ function startLevel() {
   $("msg").style.right = "0";
   menuEl.style.display = "none";
   for (const id of ["score", "lives", "coins", "hull", "weapons", "cdbar", "upgrades", "level", "dist"]) $(id).style.visibility = "visible";
-  saved = false;
+  saved = false; newBest = false;
+  hideEnd();
   previewId = "";
   setWorld(l);
   if (game) { scene.remove(game.root); game.dispose(); }
@@ -381,7 +401,7 @@ function showEntry(i: number) {
 
 // --- HUD ---
 let shownMsg = "";
-let saved = false;
+let saved = false, newBest = false, endShown = false;
 function updateHud() {
   if (!game) return;
   $("score").textContent = "SCORE " + pts(game.score);
@@ -412,7 +432,8 @@ function updateHud() {
   // Save the record when the run ends.
   if ((game.done || game.over) && !saved) {
     saved = true;
-    if (game.score > b) { localStorage.setItem(bestKey(game.level.id, skill), String(game.score)); game.message += "   NEW BEST!"; game.messageT = 7; }
+    newBest = game.score > b;
+    if (newBest) localStorage.setItem(bestKey(game.level.id, skill), String(game.score));
   }
   $("level").textContent = touch.enabled
     ? (game.tunnel ? `TUNNEL RUN   ${Math.round(game.tunnel.progress * 100)}%` : game.level.name.replace(/^\d+\s+/, "").toUpperCase())
@@ -452,12 +473,10 @@ function tick(dt: number) {
     updateGalleryMsg();
   } else if (inGallery && game) {
     if (input.hit("Escape", "Backspace")) { sfx("menuMove"); openMenu(); return; }
-    if (input.hit("ArrowRight", "KeyD", "ArrowDown", "KeyS")) { sfx("menuMove"); showEntry(galleryIndex + 1); }
-    if (input.hit("ArrowLeft", "KeyA", "ArrowUp", "KeyW")) { sfx("menuMove"); showEntry(galleryIndex - 1); }
+    // Q / E (or Page Up / Down, Tab) switch entries; arrows and WASD fly the ship.
+    if (input.hit("KeyE", "PageDown", "Tab", "GalNext")) { sfx("menuMove"); showEntry(galleryIndex + 1); }
+    if (input.hit("KeyQ", "PageUp", "GalPrev")) { sfx("menuMove"); showEntry(galleryIndex - 1); }
     if (input.hit("KeyH")) game.showHits = !game.showHits;
-    const mv = input.move();
-    if (input.anyHeld() || Math.abs(mv.x) + Math.abs(mv.y) > 0.1 || input.fire()) lastActive = performance.now();
-    else if (!game.done && !game.over && performance.now() - lastActive > IDLE_MS) { goAway(); return; }
     game.update(dt, input);
     world?.update(dt, 120);
     updateGalleryMsg();
@@ -494,13 +513,21 @@ function tick(dt: number) {
     if (input.anyHeld() || Math.abs(mv.x) + Math.abs(mv.y) > 0.1 || input.fire()) lastActive = performance.now();
     else if (!game.done && !game.over && performance.now() - lastActive > IDLE_MS) { goAway(); return; }
     game.update(dt, input);
-    if (!game.tunnel && !game.done && !game.over) world?.update(dt, game.level.speed * 10);
+    if (!game.tunnel) world?.update(dt, game.level.speed * 10);
     musicFollow();
     updateHud();
-    if (game.done || game.over) { endTimer += dt; if (endTimer > 7) openMenu(); }
+    if (game.done || game.over) {
+      // The results, once the explosion (or the finish) has had a moment; play again or back to the menu.
+      endTimer += dt;
+      if (endTimer > 1.6 && !endShown) showEnd();
+      if (endShown && input.hit("Enter", "NumpadEnter", "KeyR", "EndRetry")) { retryLevel(); return; }
+      if (input.hit("EndMenu")) { openMenu(); return; }
+    }
   }
   // Touch controls: shown while playing (steering only in tunnels), hidden in menus and the pause.
-  const playing = !!game && !inMenu && !inGallery && !inHangar && !paused && !game.done && !game.over;
+  // (In the gallery the ship can be flown too, while an enemy or mini-boss is shown.)
+  const galleryFly = inGallery && !["ship", "weapons"].includes(GALLERY[galleryIndex].kind);
+  const playing = !!game && !inMenu && (!inGallery || galleryFly) && !inHangar && !paused && !game.done && !game.over;
   const sec = game?.secondary ?? null;
   touch.update(!playing ? "hidden" : game!.tunnel ? "tunnel" : "play", sec ? WEAPONS[sec].name.replace(" CANNON", "") : null, sec && game ? 1 - game.secCool / game.cooldown(sec) : 0);
   render();
@@ -529,7 +556,7 @@ function render() {
   }
   if (game?.tunnel) { renderPass.scene = game.tunnel.scene; renderPass.camera = game.tunnel.camera; }
   else { renderPass.scene = scene; renderPass.camera = camera; }
-  ($("flash") as HTMLElement).style.opacity = String(game ? game.flash * 0.8 : 0);
+  ($("flash") as HTMLElement).style.opacity = String(Math.max(game ? game.flash * 0.8 : 0, (world?.flash ?? 0) * 0.2));
   composer.render();
 }
 
@@ -626,6 +653,8 @@ requestAnimationFrame(frameLoop);
   /** For tests: one whole frame (menus too) with the real input. */
   tick: (dt = 1 / 60) => { tick(dt); input.endFrame(); },
   step: () => { game?.update(1 / 60, input); input.endFrame(); if (!inGallery) updateHud(); },
+  /** Whole frames (menus, HUD and all) for some seconds, for when the page isn't drawing. */
+  frames: (seconds: number) => { for (let i = 0; i < Math.round(seconds * 60); i++) { tick(1 / 60); input.endFrame(); } },
   /** For tests: run the gallery demo for some seconds, then draw once. */
   galleryRun: (seconds: number) => { for (let i = 0; i < Math.round(seconds * 60); i++) game?.update(1 / 60, input); updateGalleryMsg(); render(); },
 };

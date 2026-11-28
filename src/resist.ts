@@ -12,6 +12,14 @@ export const RESIST: Record<EnemyKind, Resist> = {
   burster: { pulse: 0.65, shock: 1.3 },
   blinker: { chain: 0.25, missile: 0.6, laser: 1.3 },
   cog: { pulse: 0.6, lava: 0.7, chain: 1.5, missile: 1.25 },
+  prism: { laser: 0.4, shock: 1.4, lava: 1.2 },
+  comet: { missile: 0.5, chain: 1.3 },
+  gunship: { pulse: 0.6, lava: 1.3, chain: 1.2 },
+  jelly: { shock: 0.5, lava: 0.6, chain: 1.4 },
+  worm: { lava: 0.4, shock: 1.3, missile: 1.2 },
+  zapper: { chain: 0, lava: 1.3, shock: 1.2 },
+  orbiter: { pulse: 0.7, lava: 1.2 },
+  node: { laser: 0.5, chain: 1.5 },
 };
 
 export const BOSS_RESIST: Record<BossKind, Resist> = {

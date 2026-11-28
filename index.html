@@ -42,6 +42,11 @@
       .cleave { border-color: #f6a; color: #fbd; }
       .chelp { color: #678; font-size: 11px; margin-top: 12px; }
       #away { position: absolute; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); }
+      #endrun { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.6s; }
+      #endstats { margin: 6px 0 16px; min-width: 280px; }
+      #endstats div { display: flex; justify-content: space-between; gap: 30px; color: #bcd; font-size: 14px; padding: 3px 0; border-bottom: 1px solid rgba(80,200,230,0.15); }
+      #endstats b { color: #fff; font-weight: 600; }
+      #endstats .nb { color: #ffd860; text-shadow: 0 0 10px rgba(255,200,60,0.7); justify-content: center; border: 0; letter-spacing: 0.2em; }
       #radar { position: absolute; inset: 0; pointer-events: none; display: none; }
       #msg { left: 0; right: 0; top: 30%; text-align: center; font-size: 28px; font-weight: 600; color: #ffd860; opacity: 0; transition: opacity 0.3s; text-shadow: 0 0 14px rgba(255,200,60,0.7); }
       #menu { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow-y: auto; background: rgba(0,0,0,0.55); }
@@ -78,7 +83,7 @@
       #gabil { padding-left: 18px; margin: 14px 0; line-height: 1.5; }
       #gabil li { margin-bottom: 5px; }
       #gnote { color: #8a9; font-size: 12px; font-style: italic; }
-      .ghelp { position: absolute; bottom: 14px; left: 22px; right: 22px; color: #678; font-size: 11px; }
+      .ghelp { position: static; margin-top: 14px; color: #678; font-size: 11px; }
       /* Buttons you can tap or click (also on desktop) */
       .tapk { display: inline-block; padding: 3px 10px; margin: 0 3px; border: 1px solid #3aa; border-radius: 4px; color: #bff; cursor: pointer; pointer-events: auto; }
       .tapk:active { background: rgba(80,230,255,0.25); }
@@ -163,6 +168,12 @@
         <div class="ctext">Game and music are stopped.</div>
         <div class="chelp">PRESS ANY KEY OR TAP TO CONTINUE</div>
       </div></div>
+      <div id="endrun" style="display:none"><div class="cbox">
+        <div class="ctitle" id="endtitle">RUN OVER</div>
+        <div id="endstats"></div>
+        <span class="tapk" data-key="EndRetry">PLAY AGAIN</span> <span class="tapk cleave" data-key="EndMenu">MENU</span>
+        <div class="chelp">ENTER or R play again &nbsp; ESC menu</div>
+      </div></div>
       <div id="flash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;"></div>
       <div id="gallery" style="display:none">
         <div class="gtitle">GALLERY <span id="gcount"></span></div>
@@ -171,7 +182,7 @@
         <div id="gstats"></div>
         <ul id="gabil"></ul>
         <div id="gnote"></div>
-        <div class="ghelp"><span class="tapk" data-key="ArrowLeft">&lsaquo; PREV</span> <span class="tapk" data-key="ArrowRight">NEXT &rsaquo;</span> <span class="tapk" data-key="KeyH">HIT CIRCLES</span> <span class="tapk" data-key="Escape">BACK</span> <span class="tapk" data-fs>FULL SCREEN</span> &nbsp; (or LEFT / RIGHT, H, ESC)</div>
+        <div class="ghelp"><span class="tapk" data-key="GalPrev">&lsaquo; PREV</span> <span class="tapk" data-key="GalNext">NEXT &rsaquo;</span> <span class="tapk" data-key="KeyH">HIT CIRCLES</span> <span class="tapk" data-key="Escape">BACK</span> <span class="tapk" data-fs>FULL SCREEN</span><br>Fly the ship (arrows / WASD, J fires) to see how enemies react; it can't be destroyed here. Q / E switch.</div>
       </div>
       <div id="hangar" style="display:none"></div>
       <div id="menu">

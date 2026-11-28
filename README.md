@@ -46,7 +46,7 @@ Play sideways (landscape), with two thumbs.
 ## Levels
 
 - Sunny Synth (for kids): gentler, endless lives, 10,000 m.
-- Clockwork Foundry, Circuit Board, Synthwave Sunset, Crystal Caverns, Deep Space, Neon City, Abyss Ocean, Pyramid Dunes, Storm Front, Rave Reactor: 16,000 m each, each harder from the start than the one before, each with its own neon world (all built in code) and song.
+- Clockwork Foundry, Circuit Board, Synthwave Sunset, Crystal Caverns, Deep Space, Neon City, Abyss Ocean, Pyramid Dunes, Storm Front, Rave Reactor: 16,000 m each, each harder from the start than the one before, each with its own neon world (all built in code) and song. Levels differ in more than looks: each has its own flight patterns for the enemies (zigzag, dive at you, loops, spirals, stop-and-go, sweeps across, hover orbits and strafes) and drone formation (column, V, wall, pincer), and levels 4-10 each have a signature enemy (prism, comet, gunship, jelly, sand worm, zapper, orbiter with shield nodes). Each world also has its own background tint, glow, scroll speed and a live effect (circuit scan line, crystal colour cycling, drifting space, flickering city signs, swaying ocean, desert heat shimmer, storm lightning flashes, pulsing reactor).
 
 ## Coins, shop and hangar
 
@@ -55,6 +55,10 @@ Every run starts equal: your hull and colour, and the pulse gun. Destroyed enemi
 **Away pause**: switching to another window or tab, locking the phone, or 30 seconds without input in a run freezes the game and stops all sound until a key or tap.
 
 **Tougher enemies, damage types**: enemies and mini-bosses get tougher (and fire a little faster) as your ship gets stronger: weapon level, faster fire, damage and everything bought this run. Each enemy kind and mini-boss is protected against some weapons and weak to others (see the gallery; table in `src/resist.ts`): blinkers shrug off lightning, rocks lava, bursters pulse shots, fighters lasers; giant cogs conduct lightning. A grey puff marks a resisted hit, and a message says so the first time.
+
+**End of a run**: nothing freezes. Out of lives, the world keeps scrolling and waves keep flying their patterns without you; at the finish the field clears and fireworks go up while you keep flying. After a moment a results panel shows score (and a new best), distance, danger level, time and difficulty: PLAY AGAIN (Enter or R) or MENU (Esc).
+
+**Gallery**: each enemy flies and fires for a good while before the demo ship shoots it down, and each time it comes back with the next of its flight patterns from the levels (named on screen with where it is used). Fly the ship yourself (arrows / WASD, J fires) to see how enemies react; it cannot be destroyed there. Q / E or the PREV / NEXT buttons switch entries.
 
 **Shop** (P or Tab pauses a run; P, Esc or a tap on the game beside it goes back): spend the run's coins. Purchases last for that run only. LEAVE RUN in the shop ends the run (it asks first).
 

@@ -18,7 +18,13 @@ import { DEFAULT_LOADOUT, DUAL_FACTOR, HULLS, type AddonKind, type HullKind, typ
 
 export const HALF_W = 800, HALF_H = 450;
 
-export type EnemyKind = "drone" | "fighter" | "burster" | "splitter" | "blinker" | "cog" | "rock";
+export type EnemyKind = "drone" | "fighter" | "burster" | "splitter" | "blinker" | "cog" | "rock"
+  | "prism" | "comet" | "gunship" | "jelly" | "worm" | "zapper" | "orbiter" | "node";
+/** Flight patterns a level can give its enemies (see LevelDef.moves): for fliers zigzag, dive (at where you
+ *  were), loop, spiral, stagger (stop and go), sweep (across from the side); for hoverers orbit and strafe. */
+export type Move = "default" | "zigzag" | "dive" | "loop" | "spiral" | "stagger" | "sweep" | "orbit" | "strafe";
+/** How a level brings in drones: a column (default), a V, a wall across, or from both sides at once. */
+export type Formation = "column" | "v" | "wall" | "pincer";
 
 export interface LevelDef {
   id: string; name: string; group: string; theme: Theme; music: MusicStyle; seed: number;
@@ -33,6 +39,9 @@ export interface LevelDef {
   /** Mini-bosses: where (m) and which (their parts must be destroyed in order). */
   bosses: { at: number; kind: BossKind }[];
   gentle?: { waves: number; fire: number; shotSpeed: number; damage: number; endless: boolean };
+  /** This level's flight patterns per enemy kind, and its drone formation. */
+  moves?: Partial<Record<EnemyKind, Move>>;
+  formation?: Formation;
 }
 
 export type BossKind = "fortress" | "dreadnought" | "warden";
@@ -124,23 +133,32 @@ export const LEVELS: LevelDef[] = [
   { id: "nt01", name: "1  Clockwork Foundry", group: "NEON THEMES", theme: "Clockwork", music: "House", seed: 101, speed: 22, finish: 16000, startDifficulty: 0,
     tiers: [["drone"], ["splitter"], ["burster"], ["cog"], ["fighter"], ["blinker"]], tunnels: TUNNELS([0.75, 0.6, 0.45, 0.3]), bosses: BOSSES("fortress", "dreadnought", "warden") },
   { id: "nt02", name: "2  Circuit Board", group: "NEON THEMES", theme: "Circuit", music: "Chiptune", seed: 202, speed: 22, finish: 16000, startDifficulty: 0.1,
-    tiers: [["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog"], ["burster"]], tunnels: TUNNELS([0.65, 0.5, 0.35, 0.2]), bosses: BOSSES("dreadnought", "warden", "fortress") },
+    tiers: [["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog"], ["burster"]], tunnels: TUNNELS([0.65, 0.5, 0.35, 0.2]), bosses: BOSSES("dreadnought", "warden", "fortress"),
+    moves: { drone: "zigzag", fighter: "zigzag", splitter: "strafe" }, formation: "wall" },
   { id: "nt03", name: "3  Synthwave Sunset", group: "NEON THEMES", theme: "Synthwave", music: "Synthwave", seed: 303, speed: 23, finish: 16000, startDifficulty: 0.2,
-    tiers: [["fighter"], ["drone"], ["burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.55, 0.4, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "dreadnought") },
+    tiers: [["fighter"], ["drone"], ["burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.55, 0.4, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "dreadnought"),
+    moves: { drone: "loop", burster: "orbit" }, formation: "v" },
   { id: "nt04", name: "4  Crystal Caverns", group: "NEON THEMES", theme: "Crystal", music: "Crystal", seed: 33, speed: 23, finish: 16000, startDifficulty: 0.25,
-    tiers: [["drone", "rock"], ["blinker"], ["splitter"], ["fighter"], ["burster"], ["cog"]], tunnels: TUNNELS([0.6, 0.45, 0.3, 0.2]), bosses: BOSSES("warden", "dreadnought", "fortress") },
+    tiers: [["prism", "drone"], ["splitter"], ["blinker"], ["prism", "fighter"], ["burster"], ["cog"]], tunnels: TUNNELS([0.6, 0.45, 0.3, 0.2]), bosses: BOSSES("warden", "dreadnought", "fortress"),
+    moves: { drone: "spiral", splitter: "orbit", fighter: "loop" }, formation: "v" },
   { id: "nt05", name: "5  Deep Space", group: "NEON THEMES", theme: "Space", music: "Space", seed: 44, speed: 24, finish: 16000, startDifficulty: 0.3,
-    tiers: [["rock"], ["drone"], ["fighter"], ["splitter"], ["blinker"], ["cog", "burster"]], tunnels: TUNNELS([0.55, 0.4, 0.3, 0.15]), bosses: BOSSES("fortress", "warden", "dreadnought") },
+    tiers: [["comet", "rock"], ["drone"], ["comet", "fighter"], ["blinker"], ["splitter"], ["cog"]], tunnels: TUNNELS([0.55, 0.4, 0.3, 0.15]), bosses: BOSSES("fortress", "warden", "dreadnought"),
+    moves: { drone: "dive", fighter: "dive", blinker: "orbit" }, formation: "column" },
   { id: "nt06", name: "6  Neon City", group: "NEON THEMES", theme: "City", music: "Techno", seed: 99, speed: 24, finish: 16000, startDifficulty: 0.35,
-    tiers: [["fighter", "drone"], ["burster"], ["blinker"], ["cog"], ["splitter"], ["rock"]], tunnels: TUNNELS([0.5, 0.4, 0.25, 0.15]), bosses: BOSSES("dreadnought", "fortress", "warden") },
+    tiers: [["gunship", "drone"], ["fighter"], ["gunship", "burster"], ["blinker"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.5, 0.4, 0.25, 0.15]), bosses: BOSSES("dreadnought", "fortress", "warden"),
+    moves: { drone: "stagger", fighter: "stagger", burster: "strafe" }, formation: "wall" },
   { id: "nt07", name: "7  Abyss Ocean", group: "NEON THEMES", theme: "Ocean", music: "Deep", seed: 11, speed: 23, finish: 16000, startDifficulty: 0.4,
-    tiers: [["splitter"], ["drone"], ["blinker"], ["burster"], ["fighter"], ["cog"]], tunnels: TUNNELS([0.5, 0.35, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "warden") },
+    tiers: [["jelly", "drone"], ["splitter"], ["jelly", "burster"], ["blinker"], ["fighter"], ["cog"]], tunnels: TUNNELS([0.5, 0.35, 0.25, 0.1]), bosses: BOSSES("warden", "fortress", "warden"),
+    moves: { drone: "loop", splitter: "orbit", burster: "orbit", fighter: "loop" }, formation: "column" },
   { id: "nt08", name: "8  Pyramid Dunes", group: "NEON THEMES", theme: "Desert", music: "Trance", seed: 77, speed: 25, finish: 16000, startDifficulty: 0.45,
-    tiers: [["drone", "fighter"], ["rock"], ["cog"], ["burster"], ["splitter"], ["blinker"]], tunnels: TUNNELS([0.45, 0.35, 0.2, 0.1]), bosses: BOSSES("fortress", "dreadnought", "dreadnought") },
+    tiers: [["worm", "rock"], ["drone"], ["worm", "burster"], ["fighter"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.45, 0.35, 0.2, 0.1]), bosses: BOSSES("fortress", "dreadnought", "dreadnought"),
+    moves: { drone: "sweep", fighter: "dive", burster: "strafe" }, formation: "column" },
   { id: "nt09", name: "9  Storm Front", group: "NEON THEMES", theme: "Storm", music: "Breakbeat", seed: 66, speed: 26, finish: 16000, startDifficulty: 0.5,
-    tiers: [["blinker", "drone"], ["fighter"], ["splitter"], ["burster"], ["cog"], ["rock"]], tunnels: TUNNELS([0.4, 0.3, 0.2, 0.05]), bosses: BOSSES("dreadnought", "warden", "fortress") },
+    tiers: [["zapper", "drone"], ["blinker"], ["zapper", "fighter"], ["splitter"], ["burster"], ["cog"]], tunnels: TUNNELS([0.4, 0.3, 0.2, 0.05]), bosses: BOSSES("dreadnought", "warden", "fortress"),
+    moves: { drone: "zigzag", fighter: "zigzag", splitter: "strafe" }, formation: "pincer" },
   { id: "nt10", name: "10  Rave Reactor", group: "NEON THEMES", theme: "Reactor", music: "Rave", seed: 122, speed: 26, finish: 16000, startDifficulty: 0.55,
-    tiers: [["fighter", "burster"], ["blinker"], ["cog"], ["splitter"], ["drone", "rock"]], tunnels: TUNNELS([0.4, 0.25, 0.15, 0.05]), bosses: BOSSES("warden", "dreadnought", "fortress") },
+    tiers: [["orbiter", "drone"], ["burster"], ["orbiter", "blinker"], ["fighter"], ["cog"], ["splitter"]], tunnels: TUNNELS([0.4, 0.25, 0.15, 0.05]), bosses: BOSSES("warden", "dreadnought", "fortress"),
+    moves: { drone: "spiral", fighter: "loop", burster: "orbit", blinker: "strafe" }, formation: "v" },
 ];
 
 const hitMats = new Map<number, LineMaterial>();
@@ -161,6 +179,8 @@ interface Enemy {
   fire: number; fireMin: number; fireMax: number; burst: number; burstT: number; side: number; param: number; spin: number;
   dying: number; blinkT: number; ox: number; oy: number; fragment: boolean;
   group: number; counted: boolean;
+  /** Its flight pattern; where a dive aims (or when an orbit node broke free); the core a node circles. */
+  move: Move; tx: number; link: Enemy | null;
 }
 /** A wave: destroy every member (fragments too) for a bonus; one getting away spoils it. */
 interface WaveGroup { alive: number; value: number; spoiled: boolean }
@@ -201,7 +221,14 @@ interface Wave { obj: LineSegments2; mat: LineMaterial; x: number; y: number; r:
 /** A coin dropped by a destroyed enemy: fly close and it comes to you. */
 interface Coin { x: number; y: number; vx: number; vy: number; v: number; age: number }
 /** Coins dropped per enemy kind (splitter fragments drop 5). */
-const COIN_VALUE: Record<EnemyKind, number> = { drone: 5, rock: 5, splitter: 10, fighter: 15, burster: 20, blinker: 25, cog: 100 };
+const COIN_VALUE: Record<EnemyKind, number> = { drone: 5, rock: 5, splitter: 10, fighter: 15, burster: 20, blinker: 25, cog: 100,
+  prism: 20, comet: 10, gunship: 30, jelly: 15, worm: 10, zapper: 20, orbiter: 40, node: 5 };
+/** Flight patterns as the gallery names them. */
+const MOVE_NAME: Record<Move, string> = { default: "STANDARD", zigzag: "ZIGZAG", dive: "DIVES AT YOU", loop: "LOOPS", spiral: "SPIRALS", stagger: "STOP AND GO", sweep: "SWEEPS ACROSS", orbit: "CIRCLES IN PLACE", strafe: "WIDE STRAFES" };
+/** Plural names for messages. */
+const PLURAL: Partial<Record<EnemyKind, string>> = { cog: "GIANT COGS", jelly: "JELLIES", node: "ORBIT NODES" };
+/** Kinds that keep their facing (no tumbling). */
+const STEADY = new Set<EnemyKind>(["comet", "gunship", "worm", "jelly"]);
 const MAX_COINS = 300;
 /** Aim assist: shots and the laser lean toward an enemy at most this far off straight ahead. */
 const AIM_CONE = (10 * Math.PI) / 180;
@@ -295,6 +322,9 @@ export class Game {
   // Gallery demo
   demo: DemoKind | null = null;
   private demoT = 0; private demoSpawnT = 0; private demoSpawnedAt = 0; private demoPhase = -1;
+  /** Gallery: the flight pattern shown now (the enemy's patterns from the levels take turns), and how much
+   *  longer the player's own steering has the ship (any move or fire key takes over for a few seconds). */
+  private demoMove: Move = "default"; private demoVar = 0; private manualT = 0;
   private shieldRing: LineSegments2;
   private hitView = new THREE.Group();
 
@@ -402,8 +432,8 @@ export class Game {
   update(dt: number, input: Input) {
     this.messageT -= dt;
     this.flash = Math.max(0, this.flash - dt * 1.5);
-    if (this.demo) { this.updateDemo(dt); return; }
-    if (this.done || this.over) { this.updateEffects(dt); return; }
+    if (this.demo) { this.updateDemo(dt, input); return; }
+    if (this.done || this.over) { this.afterRun(dt, input); return; }
     this.runTime += dt;
     if (this.tunnel) { this.updateTunnel(dt, input); return; }
     if (!this.boss) this.dist += this.level.speed * dt;  // a boss fight holds the run still
@@ -426,9 +456,49 @@ export class Game {
       const bonus = 5000 + (this.level.gentle?.endless ? 0 : this.lives * 5000);
       this.score += bonus;
       this.done = true;
-      this.say(`FINISH!  +${bonus}   SCORE ${this.score.toLocaleString("en-US")}`, 7);
+      this.endRng = new Rng(this.level.seed + 7);
+      this.say(`FINISH!  +${bonus.toLocaleString("en-US")}`, 2.5);
       sfx("powerUp", 0, 1);
     }
+  }
+
+  /** After the run: nothing freezes. Game over: the world goes on without you, waves keep coming and
+   *  flying their patterns (nothing can score now). Finish: the field clears, fireworks go up and you can
+   *  keep flying. Seconds since the end (main shows the results after a moment). */
+  endT = 0;
+  private endWaveT = 1.5;
+  private endRng = new Rng(1);
+  private afterRun(dt: number, input: Input) {
+    this.endT += dt;
+    if (this.tunnel) { this.updateEffects(dt); return; }
+    if (this.over) {
+      this.ship.visible = false; this.laserBeam.visible = false; this.wingman.visible = false; this.wingman2.visible = false;
+      this.dead = 1;
+      this.endWaveT -= dt;
+      if (this.endWaveT <= 0 && !this.boss && this.enemies.length < 12) {
+        this.endWaveT = this.endRng.range(2.2, 3.4);
+        const tiers = this.level.tiers, pool = tiers.slice(0, Math.min(this.minute, tiers.length - 1) + 1).flat().filter((k) => k !== "cog");
+        if (pool.length) this.spawnGroup(this.endRng.pick(pool), this.endRng, this.difficulty);
+      }
+    } else {
+      // Finished: fly on freely, untouchable, under fireworks.
+      this.invuln = 1;
+      this.updateShip(dt, input);
+      this.ship.visible = true;
+      this.endWaveT -= dt;
+      if (this.endWaveT <= 0) {
+        this.endWaveT = this.endRng.range(0.25, 0.6);
+        const c = new THREE.Color().setHSL(this.endRng.next(), 1, 0.6).multiplyScalar(2.2);
+        const x = this.endRng.range(-HALF_W + 150, HALF_W - 150), y = this.endRng.range(-50, HALF_H - 80);
+        this.explode(x, y, c, this.endRng.range(0.7, 1.3));
+        sfx("boomSmall", x / HALF_W, 0.35, this.endRng.range(0.8, 1.4));
+      }
+    }
+    this.updateBoss(dt);
+    this.updateEnemies(dt);
+    this.updateShots(dt);
+    this.updateCoins(dt);
+    this.updateEffects(dt);
   }
 
   // --- Ship ---
@@ -746,7 +816,7 @@ export class Game {
   private loseLife() {
     if (this.level.gentle?.endless) return;
     this.lives--;
-    if (this.lives <= 0) { this.over = true; this.say(`RUN OVER  -  SCORE ${this.score.toLocaleString("en-US")}`, 7); }
+    if (this.lives <= 0) { this.over = true; this.endRng = new Rng(this.level.seed + this.waveIndex); this.say("RUN OVER", 2); }
   }
 
   hurt(dmg: number) {
@@ -797,12 +867,34 @@ export class Game {
     const top = HALF_H + 80;
     const lane = r.range(-HALF_W + 220, HALF_W - 220);
     const extra = d > 0.9 ? 1 : 0;  // bigger groups later
-    const add = (k: EnemyKind, x: number, y: number, side = 1, param = 0) => this.spawn(k, x, y, side, param, false, this.level.seed * 1000003 + this.waveIndex * 97 + this.enemies.length);
+    const add = (k: EnemyKind, x: number, y: number, side = 1, param = 0) => this.spawnOne(k, x, y, side, param);
     this.waveIndex++;
     this.currentGroup = this.waveIndex;
     this.groups.set(this.currentGroup, { alive: 0, value: 0, spoiled: false });
     switch (kind) {
-      case "drone": for (let i = 0; i < (this.ease > 0.5 ? 3 : 4) + extra * 2; i++) add("drone", lane, top + i * 140); break;
+      case "drone": {
+        const n = (this.ease > 0.5 ? 3 : 4) + extra * 2, mv = this.level.moves?.drone, s = r.chance(0.5) ? 1 : -1;
+        const f = this.level.formation ?? "column";
+        for (let i = 0; i < n; i++) {
+          if (mv === "sweep") add("drone", -s * (HALF_W + 60 + i * 100), HALF_H - 150 - (i % 2) * 90, s);
+          else if (f === "v") { const m = (n - 1) / 2; add("drone", clamp(lane + (i - m) * 95, -HALF_W + 80, HALF_W - 80), top + Math.abs(i - m) * 95, i < m ? -1 : 1); }
+          else if (f === "wall") add("drone", -HALF_W + 140 + (i * (2 * HALF_W - 280)) / Math.max(1, n - 1), top + (i % 2) * 50, i % 2 ? 1 : -1);
+          else if (f === "pincer") add("drone", (i % 2 ? 1 : -1) * (HALF_W - 150), top + Math.floor(i / 2) * 130, i % 2 ? -1 : 1);
+          else add("drone", lane, top + i * 140, s);
+        }
+        break;
+      }
+      case "prism": for (let i = 0; i < 2 + extra; i++) add("prism", clamp(lane + (i - 0.5) * 300, -HALF_W + 150, HALF_W - 150), top + i * 90, i % 2 ? -1 : 1); break;
+      case "comet": { const s = r.chance(0.5) ? 1 : -1; for (let i = 0; i < 4 + extra * 2; i++) add("comet", -s * (HALF_W - 120) + s * i * 70, top + i * 120, s); break; }
+      case "gunship": { const s = r.chance(0.5) ? 1 : -1; add("gunship", s * (HALF_W + 100), HALF_H - 120, s); if (extra || r.chance(0.4)) add("gunship", -s * (HALF_W + 100), HALF_H - 240, -s); break; }
+      case "jelly": { const n = 3 + extra; for (let i = 0; i < n; i++) add("jelly", (i - (n - 1) / 2) * 280 + r.range(-40, 40), top + (i % 2) * 120, i % 2 ? 1 : -1); break; }
+      case "worm": { const s = r.chance(0.5) ? 1 : -1; for (let i = 0; i < 7 + extra * 2; i++) add("worm", clamp(lane, -HALF_W + 400, HALF_W - 400), top, s, i); break; }
+      case "zapper": for (let i = 0; i < 2 + extra; i++) add("zapper", clamp(lane + (i - 0.5) * 260, -HALF_W + 200, HALF_W - 200), top + i * 110, i % 2 ? -1 : 1); break;
+      case "orbiter": {
+        const x = clamp(lane, -HALF_W + 260, HALF_W - 260), core = this.spawnOne("orbiter", x, top + 80, r.chance(0.5) ? 1 : -1);
+        for (let i = 0; i < 3; i++) { const nd = this.spawnOne("node", x, top + 80, i % 2 ? 1 : -1, (i * Math.PI * 2) / 3); nd.link = core; }
+        break;
+      }
       case "fighter": add("fighter", -HALF_W + 120, top + 40, 1); add("fighter", HALF_W - 120, top + 150, -1); if (extra) add("fighter", 0, top + 260, r.chance(0.5) ? 1 : -1); break;
       case "burster": { const s = r.chance(0.5) ? 1 : -1; for (let i = 0; i < 3 + extra; i++) add("burster", clamp(lane + (i - 1) * 200, -HALF_W + 120, HALF_W - 120), top + i * 120, i % 2 ? -s : s); break; }
       case "splitter": add("splitter", lane - 130, top, 1); add("splitter", lane + 130, top + 160, -1); if (extra) add("splitter", lane, top + 300, 1); break;
@@ -810,6 +902,11 @@ export class Game {
       case "rock": for (let i = 0; i < 5 + extra * 2; i++) add("rock", r.range(-HALF_W + 100, HALF_W - 100), top + i * 120, r.chance(0.5) ? 1 : -1, r.range(0, 60)); break;
       case "cog": this.lastCog = this.dist; add("cog", clamp(lane, -HALF_W + 330, HALF_W - 330), top + 280, r.chance(0.5) ? 1 : -1); break;
     }
+  }
+
+  /** One enemy of the current wave (its seed from the level, the wave and how many are out). */
+  private spawnOne(k: EnemyKind, x: number, y: number, side = 1, param = 0) {
+    return this.spawn(k, x, y, side, param, false, this.level.seed * 1000003 + this.waveIndex * 97 + this.enemies.length);
   }
 
   private spawn(kind: EnemyKind, x: number, y: number, side = 1, param = 0, fragment = false, seed = 1): Enemy {
@@ -826,6 +923,36 @@ export class Game {
       case "blinker": color = 0x99ffff; { const o = wire(new THREE.OctahedronGeometry(36), M(color, 3)); o.scale.set(0.8, 1.4, 0.8); g.add(o); } r = 38; hp = 9; score = 300; fireMin = 99; fireMax = 99; spin = 3.5; break;
       case "rock": color = 0x9966ff; g.add(wire(new THREE.IcosahedronGeometry(48, 0), M(color, 2.5, 1.8))); hp = 6; r = 44; score = 40; fireMin = 99; fireMax = 99; spin = 1.2; break;
       case "cog": color = 0xffa020; g.add(polylines([cog(16, 250, 0.86), circle(150, 48), polygon(6, 60)], true, M(color, 4, 2))); hp = 70; r = 238; score = 1500; fireMin = 2.4; fireMax = 3; spin = 0.4; break;
+      case "prism": color = 0x66e0ff; g.add(wire(new THREE.CylinderGeometry(30, 30, 72, 6), M(color, 3))); r = 40; hp = 14; score = 280; fireMin = 1.2; fireMax = 1.6; spin = 1.6; break;
+      case "comet": {
+        color = 0xffdd88; const m = M(color, 3);
+        g.add(polylines([circle(20, 16)], true, m), polylines([vv([[-14, 6], [-30, 90]]), vv([[0, 20], [0, 120]]), vv([[14, 6], [30, 90]])], false, M(color, 2, 1.6)));
+        g.rotation.z = Math.atan2(side * 560, 900); r = 30; hp = 5; score = 90; fireMin = 99; fireMax = 99; break;
+      }
+      case "gunship": {
+        color = 0xff3366;
+        g.add(polylines([vv([[-56, -10], [56, -10], [40, 20], [-40, 20]]), vv([[-56, -10], [-80, -34], [-40, -10]]), vv([[56, -10], [80, -34], [40, -10]]), circle(12, 12)], true, M(color, 3)));
+        r = 52; hp = 22; score = 350; fireMin = 1.0; fireMax = 1.4; break;
+      }
+      case "jelly": {
+        color = 0xff77dd; const bell: THREE.Vector3[] = [];
+        for (let a = 0; a <= 14; a++) { const th = Math.PI * (a / 14); bell.push(new THREE.Vector3(Math.cos(th) * 42, Math.sin(th) * 34, 0)); }
+        const ten = [-2, -1, 0, 1, 2].map((t) => vv(Array.from({ length: 6 }, (_, s) => [t * 15 + 6 * Math.sin(s + t), -s * 13])));
+        g.add(polylines([bell], true, M(color, 3)), polylines(ten, false, M(color, 2, 1.8)));
+        r = 42; hp = 12; score = 200; fireMin = 2.6; fireMax = 3.4; break;
+      }
+      case "worm": {
+        color = 0xffaa33;
+        g.add(param === 0 ? polylines([polygon(6, 34), polygon(3, 16)], true, M(color, 3)) : polylines([circle(24, 16), polygon(4, 12)], true, M(color, 2.6, 2)));
+        r = param === 0 ? 34 : 26; hp = param === 0 ? 10 : 6; score = param === 0 ? 200 : 60; fireMin = 1.4; fireMax = 1.9; break;
+      }
+      case "zapper": {
+        color = 0xffff66;
+        g.add(polylines([polygon(4, 36), vv([[-8, 30], [10, 6], [-10, -4], [8, -30]])], [true, false], M(color, 3)));
+        r = 34; hp = 9; score = 220; fireMin = 1.4; fireMax = 2; spin = 2; break;
+      }
+      case "orbiter": color = 0x66ff66; g.add(polylines([circle(44, 32), polygon(8, 30), circle(12, 12)], true, M(color, 3))); r = 44; hp = 26; score = 400; fireMin = 1.6; fireMax = 2.1; spin = 1; break;
+      case "node": color = 0x33ffee; g.add(polylines([polygon(4, 22), circle(8, 10)], true, M(color, 2.6))); r = 22; hp = 8; score = 60; fireMin = 99; fireMax = 99; spin = 3; break;
     }
     const d = this.difficulty;
     const tough = this.toughness;
@@ -840,6 +967,7 @@ export class Game {
       fire: rng.range(fireMin * 0.6, fireMax) * fireScale, fireMin: fireMin * fireScale, fireMax: fireMax * fireScale,
       burst: 0, burstT: 0, side, param, spin: spin * (rng.chance(0.5) ? 1 : -1), dying: 0, blinkT: 1.5, ox: 0, oy: 0, fragment,
       group: this.currentGroup, counted: false,
+      move: fragment ? "default" : this.demo ? this.demoMove : this.level.moves?.[kind] ?? "default", tx: this.sx, link: null,
     };
     const wg = this.groups.get(this.currentGroup);
     if (wg) wg.alive++;
@@ -852,15 +980,39 @@ export class Game {
   /** Where each kind flies: a function of time from its spawn point (same patterns as the Unreal version, scaled). */
   private path(e: Enemy, t: number): [number, number] {
     const k = 0.47;
+    if (e.kind === "worm") t = Math.max(0, t - e.param * 0.2);  // each segment follows the one ahead
+    // The level's flight pattern for this kind (fliers).
+    switch (e.move) {
+      case "zigzag": { const ph = (t * 0.7) % 1; return [e.side * 330 * k * (4 * Math.abs(ph - 0.5) - 1), -560 * k * t]; }
+      case "dive": { const f = clamp((t - 0.7) / 1.1, 0, 1); return [(e.tx - e.sx) * f * f * (3 - 2 * f), -(360 * Math.min(t, 0.7) + 1000 * Math.max(0, t - 0.7)) * k]; }
+      case "loop": return [e.side * 200 * k * Math.sin(t * 2.6), (-430 * t + 200 * Math.cos(t * 2.6) - 200) * k];
+      case "spiral": { const rr = 40 + 120 * t, a = e.side * t * 3; return [Math.cos(a) * rr * k, (-300 * t + Math.sin(a) * rr) * k]; }
+      case "stagger": { const n = Math.floor(t / 0.9), f = Math.min(1, (t % 0.9) / 0.45); return [e.side * 170 * k * Math.sin((n + f) * 1.9), -1100 * k * 0.45 * (n + f)]; }
+      case "sweep": return [e.side * 760 * k * t, (-150 * t - 40 * Math.sin(t * 4)) * k];
+    }
     switch (e.kind) {
+      case "comet": return [e.side * 560 * k * t, -900 * k * t];
+      case "jelly": return [e.side * 140 * k * Math.sin(t * 0.8), -k * (170 * t - 45 * Math.sin(t * 3.2))];
+      case "worm": return [e.side * 340 * k * Math.sin(t * 1.6), -400 * k * t];
+      case "zapper": { const ph = (t * 1.2) % 1; return [e.side * 380 * k * (4 * Math.abs(ph - 0.5) - 1), -500 * k * t]; }
+      case "gunship": {
+        // In from the side, strafes along the top for about 8 s, then dives away.
+        const In = 1.8, f = Math.min(t, In) / In;
+        return [-e.side * 900 * k * (1 - (1 - f) ** 2) - e.side * 240 * k * Math.sin(Math.max(0, t - In) * 0.8), -560 * k * Math.max(0, t - 10) ** 1.2];
+      }
       case "drone": return [Math.sin(t * 2.2) * 260 * k, -650 * k * t];
       case "fighter": { const late = Math.max(0, t - 5.5) ** 2; return [e.side * (520 * (1 - Math.exp(-0.9 * t)) + 220 * Math.sin(t * 1.3) + 260 * late) * k, (-950 * (1 - Math.exp(-1.6 * t)) + 380 * late) * k]; }
       case "rock": return [e.side * e.param * t, -170 * t];
       case "splitter": if (e.fragment) return [e.param * t, -560 * k * t]; // fall through to hover
       // eslint-disable-next-line no-fallthrough
-      case "burster": case "blinker": case "cog": {
-        const [In, Hold, Sway, Fall, Freq] = e.kind === "cog" ? [4, 20, 300, 200, 0.3] : e.kind === "burster" ? [2, 8, 600, 420, 0.9] : e.kind === "blinker" ? [3, 10, 0, 330, 0.45] : [2.5, 9, 300, 330, 0.8];
-        return [e.side * Sway * k * Math.sin(t * Freq), (-Fall * Math.min(t, In) - 22 * clamp(t - In, 0, Hold) - 420 * Math.max(0, t - In - Hold)) * k];
+      case "burster": case "blinker": case "cog": case "prism": case "orbiter": {
+        let [In, Hold, Sway, Fall, Freq] = e.kind === "cog" ? [4, 20, 300, 200, 0.3] : e.kind === "burster" ? [2, 8, 600, 420, 0.9] : e.kind === "blinker" ? [3, 10, 0, 330, 0.45]
+          : e.kind === "prism" ? [2.5, 9, 200, 330, 0.6] : e.kind === "orbiter" ? [3, 11, 260, 300, 0.5] : [2.5, 9, 300, 330, 0.8];
+        // Hover patterns: a wide fast strafe, or circling once in place.
+        if (e.move === "strafe") { Sway = 720; Freq = 1.5; }
+        const oy = e.move === "orbit" ? 150 * Math.cos(t * 1.3) * clamp(t - In, 0, 1) : 0;
+        if (e.move === "orbit") { Sway = 260; Freq = 1.3; }
+        return [e.side * Sway * k * Math.sin(t * Freq), (-Fall * Math.min(t, In) - 22 * clamp(t - In, 0, Hold) - 420 * Math.max(0, t - In - Hold) + oy) * k];
       }
     }
     return [0, 0];
@@ -878,12 +1030,20 @@ export class Game {
         continue;
       }
       e.age += dt;
-      const [px, py] = this.path(e, e.age);
-      e.x = e.sx + px + e.ox; e.y = e.sy + py + e.oy;
+      if (e.kind === "node") {
+        // Orbit nodes circle their core and shield it; when it's gone they drift off.
+        const L = e.link;
+        if (L && L.dying <= 0 && this.enemies.includes(L)) { const a = e.age * 1.7 + e.param; e.x = L.x + Math.cos(a) * 100; e.y = L.y + Math.sin(a) * 100; e.sx = e.x; e.sy = e.y; e.tx = e.age; }
+        else { e.link = null; e.x = e.sx + e.side * 120 * (e.age - e.tx); e.y = e.sy - 260 * (e.age - e.tx); }
+      } else {
+        const [px, py] = this.path(e, e.age);
+        e.x = e.sx + px + e.ox; e.y = e.sy + py + e.oy;
+      }
       e.obj.position.set(e.x, e.y, 0);
       const T = e.age;
       if (e.kind === "cog") { e.obj.rotation.z += e.spin * dt; this.bigFight = 1; }
-      else e.obj.rotation.set(Math.sin(T * 1.7) * 0.5, Math.cos(T * 1.3) * 0.55, T * e.spin);
+      else if (e.kind === "jelly") e.obj.scale.set(1 + 0.12 * Math.sin(T * 3.2), 1 - 0.1 * Math.sin(T * 3.2), 1);
+      else if (!STEADY.has(e.kind)) e.obj.rotation.set(Math.sin(T * 1.7) * 0.5, Math.cos(T * 1.3) * 0.55, T * e.spin);
       if (e.y < -HALF_H - 200 || e.y > HALF_H + 900 || Math.abs(e.x) > HALF_W + 600) { this.remove(e); continue; }
       if (this.dead <= 0 && Math.hypot(e.x - this.sx, e.y - this.sy) < e.r + this.ramR) { this.hurt(e.kind === "cog" ? 40 : 30); if (e.kind !== "cog") this.kill(e, false); continue; }
       this.enemyFire(e, dt);
@@ -922,11 +1082,25 @@ export class Game {
       case "burster": e.burst = 5; e.burstT = 0; break;
       case "splitter": this.fireShots(e, ax, ay, 1, 0, 480, new THREE.Color(1.6, 2, 0.4), 9); break;
       case "cog": { const rot = e.obj.rotation.z; for (let i = 0; i < 10; i++) { const a = rot + (i / 10) * Math.PI * 2; this.fireShots(e, Math.cos(a), Math.sin(a), 1, 0, 260, new THREE.Color(2, 1.3, 0.4), 12); } break; }
+      // Prism: three shots 120 degrees apart, the set turning a little every time.
+      case "prism": for (let i = 0; i < 3; i++) { const a = e.age * 1.4 + (i * Math.PI * 2) / 3; this.fireShots(e, Math.cos(a), Math.sin(a), 1, 0, 380, new THREE.Color(0.6, 1.8, 2.4), 9); } break;
+      // Jelly: a pulse of 8 slow shots all round.
+      case "jelly": for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + e.age; this.fireShots(e, Math.cos(a), Math.sin(a), 1, 0, 210, new THREE.Color(2.2, 0.8, 1.8), 10); } break;
+      // Gunship: a row of three bombs straight down.
+      case "gunship": for (const dx of [-30, 0, 30]) this.eshots.push({ x: e.x + dx, y: e.y - 30, vx: 0, vy: -this.shotSpeed(560), r: 8, color: new THREE.Color(2.4, 0.6, 0.9), dmg: 10, life: 6 }); sfx("enemyShot", e.x / HALF_W, 0.5); break;
+      // Worm: only the front segment shoots.
+      case "worm": if (!this.enemies.some((o) => o.kind === "worm" && o.group === e.group && o.dying <= 0 && o.param < e.param)) this.fireShots(e, ax, ay, 1, 0, 500, new THREE.Color(2.4, 1.4, 0.3), 9); break;
+      // Zapper: a bolt, five fast shots in a line straight down.
+      case "zapper": for (let i = 0; i < 5; i++) this.eshots.push({ x: e.x, y: e.y - 30 - i * 34, vx: 0, vy: -this.shotSpeed(780), r: 7, color: new THREE.Color(2.4, 2.4, 0.6), dmg: 10, life: 4 }); sfx("lightning", e.x / HALF_W, 0.25); break;
+      case "orbiter": this.fireShots(e, ax, ay, 3, 12, 480, new THREE.Color(0.6, 2.4, 0.8), 9); break;
     }
   }
 
+  /** Enemy shot speed: faster with danger, slower on gentle levels and while you struggle. */
+  private shotSpeed(v: number) { return v * (this.level.gentle?.shotSpeed ?? 1) * (1 + 0.15 * Math.min(this.difficulty, 1.5)) * (1 - 0.25 * this.ease); }
+
   private fireShots(e: Enemy, dx: number, dy: number, n: number, spreadDeg: number, speed: number, color: THREE.Color, r: number) {
-    speed *= (this.level.gentle?.shotSpeed ?? 1) * (1 + 0.15 * Math.min(this.difficulty, 1.5)) * (1 - 0.25 * this.ease);
+    speed = this.shotSpeed(speed);
     for (let i = 0; i < n; i++) {
       const a = ((i - (n - 1) / 2) * spreadDeg * Math.PI) / 180;
       const vx = dx * Math.cos(a) - dy * Math.sin(a), vy = dx * Math.sin(a) + dy * Math.cos(a);
@@ -939,7 +1113,7 @@ export class Game {
     if (e.dying > 0 || e.y > HALF_H + e.r * 0.3) return;  // only once (mostly) on screen
     const mult = RESIST[e.kind][w] ?? 1;
     e.hp -= dmg * mult;
-    this.noteResist(e.kind === "cog" ? "GIANT COGS" : e.kind.toUpperCase() + "S", w, mult, e.x, e.y, quiet);
+    this.noteResist(PLURAL[e.kind] ?? e.kind.toUpperCase() + "S", w, mult, e.x, e.y, quiet);
     // Beams and pools hit every frame: flash and click only now and then.
     if (!quiet || this.quietHitT <= 0) {
       if (quiet) this.quietHitT = 0.1;
@@ -975,6 +1149,7 @@ export class Game {
   }
 
   private kill(e: Enemy, scored: boolean) {
+    if (this.done || this.over) scored = false;  // the run is over: nothing counts now
     if (scored) { this.score += e.score; this.dropCoins(e.x, e.y, e.fragment ? 5 : COIN_VALUE[e.kind]); }
     e.counted = true;
     const wg = this.groups.get(e.group);
@@ -1392,6 +1567,7 @@ export class Game {
     this.shots = []; this.eshots = [];
     this.demo = kind;
     this.demoT = 0; this.demoSpawnT = 0.5; this.demoSpawnedAt = 0; this.demoPhase = -1;
+    this.demoMove = "default"; this.demoVar = 0; this.manualT = 0;
     this.weapon = kind === "ship" ? 1 : kind in BOSS_DEFS ? 4 : 3;
     this.primaries = ["pulse"];
     this.addons = [];
@@ -1407,7 +1583,7 @@ export class Game {
     this.messageT = 0;
   }
 
-  private updateDemo(dt: number) {
+  private updateDemo(dt: number, input: Input) {
     const k = this.demo!;
     this.runTime += dt;
     this.demoT += dt;
@@ -1449,10 +1625,25 @@ export class Game {
       if (st.hold) tx = DEMO_X;  // hold still (and let the shield take the hits)
       if (st.targets) tx = this.demoRocks(dt);
     } else {
-      // Bring it on, watch it for a moment, then shoot it down; again once it's gone.
+      // Bring it on (each time with the next of its flight patterns), let it fly and fire for a good while,
+      // then shoot it down; again once it's gone. Fly the ship yourself to see how it reacts.
       const empty = isBoss ? !this.boss : this.enemies.length === 0;
       if (empty) { this.demoSpawnT -= dt; if (this.demoSpawnT <= 0) { this.demoSpawn(k); this.demoSpawnT = 1.2; } }
-      const watch: Record<string, number> = { drone: 2.6, rock: 1.6, splitter: 3, fighter: 3.4, burster: 4.2, blinker: 5, cog: 7, fortress: 3, dreadnought: 3, warden: 3 };
+      const watch: Record<string, number> = { drone: 5, rock: 4, splitter: 6, fighter: 6, burster: 8, blinker: 9, cog: 12, prism: 8, comet: 3, gunship: 9, jelly: 8, worm: 6, zapper: 6, orbiter: 9, node: 9, fortress: 3, dreadnought: 3, warden: 3 };
+      const mv = input.move();
+      if (Math.abs(mv.x) + Math.abs(mv.y) > 0.1 || input.fire()) this.manualT = 4;
+      this.manualT -= dt;
+      if (this.manualT > 0) {
+        // The player flies (and fires, J / Z) the ship; it can't be destroyed here.
+        this.updateShip(dt, input);
+        this.sx = Math.min(this.sx, HALF_W * 0.28);  // not under the info panel
+        this.updateBoss(dt);
+        this.updateEnemies(dt);
+        this.updateShots(dt);
+        this.updateEffects(dt);
+        this.drawHits();
+        return;
+      }
       if (this.demoT - this.demoSpawnedAt > watch[k]) {
         fire = true;
         if (this.boss) {
@@ -1494,18 +1685,40 @@ export class Game {
     return best ? best.x : DEMO_X;
   }
 
+  /** The flight patterns an enemy kind has across the levels, with where (the standard one first). */
+  private demoMoves(k: DemoKind): { move: Move; where: string }[] {
+    const out: { move: Move; where: string }[] = [{ move: "default", where: "" }];
+    for (const l of LEVELS) {
+      const m = l.moves?.[k as EnemyKind];
+      if (!m) continue;
+      const name = l.name.replace(/^\d+\s+/, "").toUpperCase(), have = out.find((o) => o.move === m);
+      if (have) have.where += ", " + name; else out.push({ move: m, where: name });
+    }
+    return out;
+  }
+
   private demoSpawn(k: DemoKind) {
     this.demoSpawnedAt = this.demoT;
+    const vars = this.demoMoves(k), v = vars[this.demoVar++ % vars.length];
+    this.demoMove = v.move;
+    if (vars.length > 1) this.say(`FLIGHT: ${MOVE_NAME[v.move]}${v.where ? "  -  " + v.where : ""}`, 3.5);
     const top = HALF_H + 80, X = DEMO_X;
     const add = (kind: EnemyKind, x: number, y: number, side = 1, param = 0) => this.spawn(kind, x, y, side, param, false, 5000 + this.waveIndex++ * 97);
     switch (k) {
-      case "drone": for (let i = 0; i < 3; i++) add("drone", X, top + i * 140); break;
+      case "drone": for (let i = 0; i < 3; i++) { if (this.demoMove === "sweep") add("drone", -(HALF_W + 60 + i * 100), HALF_H - 150 - (i % 2) * 90, 1); else add("drone", X, top + i * 140); } break;
       case "rock": for (let i = 0; i < 4; i++) add("rock", X + (i - 1.5) * 130, top + i * 110, i % 2 ? 1 : -1, 40); break;
       case "fighter": add("fighter", X - 380, top + 40, 1); break;
       case "burster": add("burster", X, top, 1); break;
       case "splitter": add("splitter", X, top, 1); break;
       case "blinker": add("blinker", X, top); break;
       case "cog": add("cog", X, top + 280, 1); break;
+      case "prism": add("prism", X, top, 1); break;
+      case "comet": for (let i = 0; i < 3; i++) add("comet", X - 300 + i * 70, top + i * 120, 1); break;
+      case "gunship": add("gunship", X + 520, HALF_H - 140, 1); break;
+      case "jelly": add("jelly", X, top, 1); break;
+      case "worm": for (let i = 0; i < 7; i++) add("worm", X, top, 1, i); break;
+      case "zapper": add("zapper", X, top, 1); break;
+      case "orbiter": case "node": { const c = add("orbiter", X, top + 80, 1); for (let i = 0; i < 3; i++) { const n = add("node", X, top + 80, 1, (i * Math.PI * 2) / 3); n.link = c; } break; }
       case "fortress": case "dreadnought": case "warden": this.spawnBoss(k); break;
     }
   }

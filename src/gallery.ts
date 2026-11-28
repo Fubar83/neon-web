@@ -84,6 +84,41 @@ export const GALLERY: GalleryEntry[] = [
     abilities: ["A huge spinning gear that hovers for about 20 seconds", "Fires rings of 10 slow shots that turn with it", "Ramming it costs 40 hull, and it doesn't break"],
   },
   {
+    kind: "prism", name: "Prism", color: "#66e0ff",
+    stats: [["Points", "280"], ["Toughness", "14"], ["Comes", "in pairs - Crystal Caverns"]],
+    abilities: ["Hovers and sways", "Fires three shots 120 degrees apart, the set turning each time", "Its crystal bends laser beams away"],
+  },
+  {
+    kind: "comet", name: "Comet", color: "#ffdd88",
+    stats: [["Points", "90"], ["Toughness", "5"], ["Comes", "in streams of 4 to 6 - Deep Space"]],
+    abilities: ["Streaks across the screen at an angle, fast", "No weapon, but ramming one hurts", "Too fast for missiles to catch well"],
+  },
+  {
+    kind: "gunship", name: "Gunship", color: "#ff3366",
+    stats: [["Points", "350"], ["Toughness", "22"], ["Comes", "one or two, from the sides - Neon City"]],
+    abilities: ["Flies in from the side and strafes along the top", "Drops rows of three bombs straight down: stay out from under it", "Armoured against pulse shots"],
+  },
+  {
+    kind: "jelly", name: "Jelly", color: "#ff77dd",
+    stats: [["Points", "200"], ["Toughness", "12"], ["Comes", "in groups of 3 - Abyss Ocean"]],
+    abilities: ["Drifts slowly down, pulsing", "Every few seconds a ring of 8 slow shots all round", "Soaks up shockwaves; salt water carries lightning"],
+  },
+  {
+    kind: "worm", name: "Sand Worm", color: "#ffaa33",
+    stats: [["Points", "200 head, 60 per segment"], ["Toughness", "10 head, 6 per segment"], ["Comes", "7 to 9 segments - Pyramid Dunes"]],
+    abilities: ["Snakes down the screen, each segment following the one ahead", "Only the front segment shoots: take it out and the next one takes over", "Shrugs off lava"],
+  },
+  {
+    kind: "zapper", name: "Zapper", color: "#ffff66",
+    stats: [["Points", "220"], ["Toughness", "9"], ["Comes", "in pairs - Storm Front"]],
+    abilities: ["Zigzags quickly from side to side", "Fires a bolt: five fast shots in a line straight down", "Made of lightning: chain lasers don't hurt it at all"],
+  },
+  {
+    kind: "orbiter", name: "Orbiter", color: "#66ff66",
+    stats: [["Points", "400 core, 60 per node"], ["Toughness", "26 core, 8 per node"], ["Comes", "a core with 3 nodes - Rave Reactor"]],
+    abilities: ["Three nodes circle the core and catch your shots", "The core fires 3-shot spreads at you", "Destroy the core and the nodes drift away"],
+  },
+  {
     kind: "fortress", name: "Boss: Fortress", color: "#8899ff",
     stats: [["Sections", "gun deck, generators, core"], ["Points", "2,000 / 2,000 / 6,000"], ["Tactic", "read the warnings, dodge, hit back in the rests"]],
     abilities: [

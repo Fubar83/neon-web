@@ -26,11 +26,36 @@ const PALETTES: Record<Theme, number[]> = {
   Storm: [0xaabbff, 0x66eeff, 0xffff66, 0xcc66ff],
   Reactor: [0x66ff66, 0xffee33, 0x33ffee, 0xff5533],
 };
+/** How each theme feels besides its shapes: background tint, glow, scroll speed (a fraction of the run's),
+ *  and a live effect: a scan line, colour cycling, drifting, flickering signs, swaying water, heat shimmer,
+ *  lightning flashes or a pulsing glow. */
+type Fx = "none" | "scan" | "hue" | "drift" | "flicker" | "sway" | "shimmer" | "flash" | "pulse";
+export const LOOK: Record<Theme, { bg: number; bloom: number; scroll: number; fx: Fx }> = {
+  Clockwork: { bg: 0x0b0703, bloom: 0.85, scroll: 1, fx: "none" },
+  Circuit: { bg: 0x010904, bloom: 0.8, scroll: 1.15, fx: "scan" },
+  Synthwave: { bg: 0x0b0014, bloom: 0.95, scroll: 1, fx: "none" },
+  Crystal: { bg: 0x020818, bloom: 1.15, scroll: 0.85, fx: "hue" },
+  Space: { bg: 0x000000, bloom: 0.75, scroll: 0.5, fx: "drift" },
+  City: { bg: 0x0a020c, bloom: 0.9, scroll: 1.35, fx: "flicker" },
+  Ocean: { bg: 0x00101c, bloom: 0.8, scroll: 0.75, fx: "sway" },
+  Desert: { bg: 0x120700, bloom: 0.9, scroll: 0.9, fx: "shimmer" },
+  Storm: { bg: 0x06040f, bloom: 0.9, scroll: 1.3, fx: "flash" },
+  Reactor: { bg: 0x010a02, bloom: 1, scroll: 1.1, fx: "pulse" },
+};
+const hsl = { h: 0, s: 0, l: 0 };
+
 /** The edge rails' colour per theme. */
 const RAILS: Record<Theme, number> = { Clockwork: 0x14f0ff, Circuit: 0xffcc33, Synthwave: 0xff33b3, Crystal: 0x66e0ff, Space: 0x88aaff, City: 0xff3366, Ocean: 0x22ccff, Desert: 0xffaa33, Storm: 0xcc66ff, Reactor: 0x66ff66 };
 
 export class NeonWorld {
   readonly root = new THREE.Group();
+  /** The scrolling scenery (the theme's effects move it; the rails stay put). */
+  private scenery = new THREE.Group();
+  /** Storm: how bright the current lightning flash is (0..1), the next one, and its bolt. */
+  flash = 0;
+  private flashT = 2;
+  private bolt: { obj: THREE.Object3D; mat: LineMaterial; life: number } | null = null;
+  private scan: THREE.Object3D | null = null;
   private chunks = new Map<number, Chunk>();
   private offset = 0;
   private time = 0;
@@ -44,20 +69,28 @@ export class NeonWorld {
     const pairs: number[] = [];
     for (const x of [-800, 800]) pairs.push(x, -2000, -10, x, 2000, -10);
     this.root.add(segments(pairs, m));
+    this.root.add(this.scenery);
+    if (LOOK[theme].fx === "scan") {
+      const sm = lineMaterial(PALETTES[theme][0], 3, 0.5); this.railMats.push(sm);
+      this.scan = segments([-SPREAD, 0, -480, SPREAD, 0, -480], sm);
+      this.root.add(this.scan);
+    }
   }
 
   private mat(color: number, width: number, bright = 1): LineMaterial {
-    return lineMaterial(color, width, this.brightness * bright);
+    const m = lineMaterial(color, width, this.brightness * bright);
+    m.userData.base = m.color.clone();
+    return m;
   }
 
   update(dt: number, scroll: number) {
     this.time += dt;
-    this.offset += scroll * dt;
+    this.offset += scroll * dt * LOOK[this.theme].scroll;
     const first = Math.floor((this.offset - 2500) / CHUNK), last = Math.floor((this.offset + 4000) / CHUNK);
     for (let k = first; k <= last; k++) if (!this.chunks.has(k)) this.build(k);
     for (const [k, ch] of this.chunks) {
       if (k < first - 1 || k > last + 1) {
-        this.root.remove(ch.group);
+        this.scenery.remove(ch.group);
         ch.group.traverse((o) => { const l = o as THREE.Mesh; if (l.geometry) l.geometry.dispose(); });
         ch.mats.forEach(disposeMaterial);
         this.chunks.delete(k);
@@ -65,6 +98,42 @@ export class NeonWorld {
       }
       ch.group.position.y = k * CHUNK - this.offset;
       for (const s of ch.spinners) s.obj.rotation.z += s.rate * dt;
+    }
+    this.themeFx(dt);
+  }
+
+  private themeFx(dt: number) {
+    const fx = LOOK[this.theme].fx, s = this.scenery, T = this.time;
+    if (fx === "sway") { s.rotation.z = 0.035 * Math.sin(T * 0.45); s.position.x = 70 * Math.sin(T * 0.3); }
+    else if (fx === "drift") s.rotation.z = 0.06 * Math.sin(T * 0.08);
+    else if (fx === "shimmer") { s.scale.x = 1 + 0.012 * Math.sin(T * 6); s.position.y = 6 * Math.sin(T * 9); }
+    else if (fx === "scan" && this.scan) this.scan.position.y = 1700 - ((T * 520) % 3400);
+    else if (fx === "pulse" || fx === "hue" || fx === "flicker") {
+      const f = 0.7 + 0.55 * Math.max(0, Math.sin(T * Math.PI * 2 * 1.05)) ** 3;
+      for (const ch of this.chunks.values()) for (const m of ch.mats) {
+        const b = m.userData.base as THREE.Color;
+        if (fx === "pulse") m.color.copy(b).multiplyScalar(f);
+        else if (fx === "hue") { b.getHSL(hsl); m.color.setHSL((hsl.h + T * 0.04) % 1, hsl.s, hsl.l); }
+        else if ((m.userData.off ?? 0) > 0) { m.userData.off -= dt; m.color.copy(b).multiplyScalar(m.userData.off > 0 ? 0.12 : 1); }
+        else if (Math.random() < dt * 0.2) m.userData.off = 0.08 + Math.random() * 0.3;
+      }
+    } else if (fx === "flash") {
+      // Lightning: a flash of light now and then, with a bolt far below.
+      this.flash = Math.max(0, this.flash - dt * 3.5);
+      this.flashT -= dt;
+      if (this.bolt) { this.bolt.life -= dt; if (this.bolt.life <= 0) { this.root.remove(this.bolt.obj); disposeMaterial(this.bolt.mat); this.bolt = null; } }
+      if (this.flashT <= 0) {
+        this.flashT = 3 + Math.random() * 5;
+        this.flash = 1;
+        if (!this.bolt) {
+          const p: THREE.Vector3[] = []; let x = (Math.random() - 0.5) * SPREAD * 1.6, y = 1400;
+          while (y > -1400) { p.push(new THREE.Vector3(x, y, -1300)); x += (Math.random() - 0.5) * 500; y -= 150 + Math.random() * 200; }
+          const mat = lineMaterial(0xffffcc, 4, 1.2);
+          const obj = polylines([p], false, mat);
+          this.root.add(obj);
+          this.bolt = { obj, mat, life: 0.22 };
+        }
+      }
     }
   }
 
@@ -74,6 +143,7 @@ export class NeonWorld {
       ch.mats.forEach(disposeMaterial);
     }
     this.railMats.forEach(disposeMaterial);
+    if (this.bolt) disposeMaterial(this.bolt.mat);
     this.chunks.clear();
   }
 
@@ -337,7 +407,7 @@ export class NeonWorld {
       }
     }
     group.position.y = k * CHUNK - this.offset;
-    this.root.add(group);
+    this.scenery.add(group);
     this.chunks.set(k, ch);
   }
 }
